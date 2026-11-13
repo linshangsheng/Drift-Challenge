@@ -17,6 +17,7 @@
   var scene = new T.Scene();
   var camera = new T.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.5, 2000);
 
+  scene.environment = DC.makeEnvMap(renderer);
   var world = new DC.World(scene);
   var track = new DC.Track(scene, world);
   var effects = new DC.Effects(scene);

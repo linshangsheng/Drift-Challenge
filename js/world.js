@@ -35,7 +35,7 @@
     ['skyTop', 'skyBottom', 'fog', 'sun', 'hemiSky', 'hemiGround', 'cloud', 'mountain', 'rock', 'asphalt', 'edge'].forEach(function (k) {
       self.cur[k] = new T.Color(th[k]);
     });
-    this.cur.sunI = th.sunI; this.cur.hemiI = th.hemiI; this.cur.edgeGlow = th.edgeGlow; this.cur.stars = th.stars;
+    this.cur.sunI = th.sunI; this.cur.hemiI = th.hemiI; this.cur.edgeGlow = th.edgeGlow; this.cur.stars = th.stars; this.cur.env = th.env;
 
     scene.fog = new T.Fog(this.cur.fog.clone(), 80, 520);
 
@@ -148,6 +148,11 @@
     this.mats.rock.color.copy(c.rock);
     this.mats.edge.color.copy(c.edge); this.mats.edge.emissive.copy(c.edge); this.mats.edge.emissiveIntensity = c.edgeGlow;
     this.starMat.opacity = c.stars;
+    if (DC.carMaterials) {
+      var cm = DC.carMaterials();
+      cm.paint.envMapIntensity = c.env; cm.chrome.envMapIntensity = c.env * 1.2; cm.glass.envMapIntensity = c.env * 1.3; cm.matte.envMapIntensity = c.env * 0.6;
+      this.mats.asphalt.envMapIntensity = c.env * 0.35; this.mats.rock.envMapIntensity = c.env * 0.3;
+    }
     this.stars.visible = c.stars > 0.02;
 
     if (cam) {

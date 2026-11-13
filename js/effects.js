@@ -42,7 +42,7 @@
     // 刹车痕
     this.skidGeo = new T.PlaneGeometry(0.32, 1);
     this.skidGeo.rotateX(-Math.PI / 2);
-    this.skidMat = new T.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.38, depthWrite: false,
+    this.skidMat = new T.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.5, depthWrite: false,
       polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 });
     this.skids = [];
     for (var k = 0; k < 500; k++) {
@@ -87,7 +87,7 @@
   };
 
   // 在轮胎位置画一段刹车痕（wheelIdx 0/1 两个后轮）
-  Effects.prototype.skid = function (wheelIdx, x, z) {
+  Effects.prototype.skid = function (wheelIdx, x, z, y) {
     var last = this.lastSkid[wheelIdx];
     if (!last) { this.lastSkid[wheelIdx] = { x: x, z: z }; return; }
     var dx = x - last.x, dz = z - last.z;
@@ -95,7 +95,7 @@
     if (d < 0.6) return;
     if (d > 6) { this.lastSkid[wheelIdx] = { x: x, z: z }; return; }
     var m = this.skids[this.skidNext++ % this.skids.length];
-    m.position.set((x + last.x) / 2, 0.015, (z + last.z) / 2);
+    m.position.set((x + last.x) / 2, (y || 0) + 0.035, (z + last.z) / 2);
     m.rotation.y = Math.atan2(dx, dz);
     m.scale.set(1, 1, d);
     m.visible = true;

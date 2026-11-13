@@ -9,6 +9,8 @@
       owned: [1],
       selected: 1,
       mods: {},
+      tires: ['stock'],
+      tire: 'stock',
       best: { level: 1, time: 0, coins: 0, eaten: 0 },
       totalRuns: 0,
       settings: { sound: true, shadows: true }
@@ -28,6 +30,8 @@
         d.best = Object.assign(defaults().best, parsed.best || {});
         if (!Array.isArray(d.owned) || d.owned.indexOf(1) < 0) d.owned = [1].concat(d.owned || []);
         if (d.owned.indexOf(d.selected) < 0) d.selected = 1;
+        if (!Array.isArray(d.tires) || d.tires.indexOf('stock') < 0) d.tires = ['stock'].concat(d.tires || []);
+        if (d.tires.indexOf(d.tire) < 0) d.tire = 'stock';
         data = d;
       }
     } catch (e) { data = defaults(); }
@@ -43,7 +47,8 @@
     get data() { return data; },
     reset: function () { data = defaults(); save(); },
     modLevel: function (id) { return data.mods[id] || 0; },
-    owns: function (level) { return data.owned.indexOf(level) >= 0; }
+    owns: function (level) { return data.owned.indexOf(level) >= 0; },
+    ownsTire: function (id) { return data.tires.indexOf(id) >= 0; }
   };
   load();
 })(window.DC);

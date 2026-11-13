@@ -36,6 +36,7 @@
     click('btnStart', function () { self.startGame(); });
     click('btnGarage', function () { self.showShop('cars'); });
     click('btnMods', function () { self.showShop('mods'); });
+    click('btnTires', function () { self.showShop('tires'); });
     click('btnSettings', function () { self.openModal('settingsModal'); });
     click('btnSettingsClose', function () { self.closeModal('settingsModal'); });
     click('btnFullscreen', function () { DC.toggleFullscreen(); });
@@ -102,6 +103,10 @@
       self.focusCar(+tile.dataset.level);
       self.detailAction();
     });
+    $('tireList').addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-tire]'); if (!b) return;
+      self.tireAction(b.dataset.tire);
+    });
     $('modList').addEventListener('click', function (e) {
       var b = e.target.closest('button[data-mod]'); if (!b) return;
       self.buyMod(b.dataset.mod);
@@ -128,6 +133,8 @@
   };
 
   UI.prototype.hideAll = function () {
+    this.clearFloaters();
+    $('toasts').innerHTML = '';
     ['menu', 'shop', 'hud'].forEach(function (id) { $(id).classList.add('hidden'); });
     $('countdown').classList.add('hidden');
   };
@@ -160,7 +167,7 @@
     var lv = $(prefix + 'Level');
     lv.textContent = 'Lv' + level; lv.style.color = c.tier.color;
     var tier = $(prefix + 'Tier');
-    tier.textContent = c.tier.name; tier.style.color = c.tier.color;
+    tier.textContent = c.tier.name + ' · ' + c.typeName; tier.style.color = c.tier.color;
     $(prefix + 'Name').textContent = c.name;
     $(prefix + 'Speed').textContent = DC.kmhOf(level);
     $(prefix + 'Income').textContent = DC.fmtIncome(DC.incomeOf(level));
@@ -176,6 +183,7 @@
     $('hud').classList.remove('hidden');
     this.updateViewShift();
     $('hudLevel').textContent = '';
+    this.roadText = '';
     $('hint').style.opacity = 1;
     this.hintTimer = 6;
     this.tailSig = null;
@@ -214,7 +222,10 @@
     el.textContent = text;
     el.style.color = color || '#fff';
     $('floaters').appendChild(el);
-    this.floaters.push({ el: el, x: x, y: y, z: z, t: 0 });
+    var stack = 0;
+    for (var i = 0; i < this.floaters.length; i++) if (this.floaters[i].t < 0.3) stack++;
+    this.floaters.push({ el: el, x: x, y: y + stack * 1.2, z: z, t: 0 });
+    while (this.floaters.length > 6) { this.floaters[0].el.remove(); this.floaters.shift(); }
   };
   UI.prototype.clearFloaters = function () {
     this.floaters.forEach(function (f) { f.el.remove(); });
@@ -231,14 +242,21 @@
       cd.classList.add('anim');
       if (d.n === 0) setTimeout(function () { cd.classList.add('hidden'); }, 900);
     } else if (type === 'eat') {
-      this.floater(d.x, 2.5, d.z, '+Lv' + d.level, DC.tierOf(d.level).color);
+      this.floater(d.x, (d.y || 0) + 2.5, d.z, '+Lv' + d.level, DC.tierOf(d.level).color);
     } else if (type === 'merge') {
-      this.floater(d.x, 3.5, d.z, '合成 Lv' + d.level + '  +' + DC.fmt(d.bonus), DC.tierOf(d.level).color);
+      var hh = this.game.head;
+      this.floater(hh.x, hh.y + 4.5, hh.z, '合成 Lv' + d.level + '  +' + DC.fmt(d.bonus), DC.tierOf(d.level).color);
     } else if (type === 'levelup') {
       var c = DC.carOf(d.level);
       this.toast('升级！Lv' + d.level + ' ' + c.name + '<small>' + c.tier.name + ' · 极速 ' + DC.kmhOf(d.level) + ' km/h · +' + DC.fmt(d.bonus) + ' 金币</small>', c.tier.color);
       var ti = DC.themeIndexOf(d.level);
-      if (DC.THEMES[ti].from === d.level) setTimeout(function () { self.toast('进入新场景：' + DC.THEMES[ti].name, '#ffffff'); }, 900);
+      if (DC.THEMES[ti].from === d.level) setTimeout(function () { self.toast('进入新场景：' + DC.THEMES[ti].name + '<small>' + DC.SURFACES[DC.THEMES[ti].surface].name + '，注意侧滑距离变化</small>', '#ffffff'); }, 900);
+    } else if (type === 'land') {
+      if (d.air > 0.5) this.floater(this.game.head.x, this.game.head.y + 3, this.game.head.z, '飞跃 ' + d.air.toFixed(1) + 's', '#ffd34d');
+    } else if (type === 'boost') {
+      this.floater(this.game.head.x, this.game.head.y + 3, this.game.head.z, '加速！', '#3df5ff');
+    } else if (type === 'slick') {
+      this.floater(this.game.head.x, this.game.head.y + 3, this.game.head.z, '打滑！', '#c9a8ff');
     } else if (type === 'legend') {
       this.toast('传奇合成！+' + DC.fmt(d.bonus), '#3df5ff');
     } else if (type === 'shield') {
@@ -272,10 +290,13 @@
       var c = DC.carOf(h.level);
       var lv = $('hudLevel');
       if (lv.textContent !== 'Lv' + h.level) { lv.textContent = 'Lv' + h.level; lv.style.color = c.tier.color; $('hudName').textContent = c.name; $('hudTier').textContent = c.tier.name; $('hudTier').style.color = c.tier.color; }
-      $('hudSpeed').textContent = Math.round(h.v / DC.speedOf(h.level) * DC.kmhOf(h.level));
+      $('hudSpeed').textContent = Math.round(DC.toKmh(h.v, h.level));
       $('hudCoins').textContent = DC.fmt(g.stats.coins);
       $('hudIncome').textContent = '+' + DC.fmtIncome(DC.incomeOf(h.level) * g.turbo) + '/秒';
       $('hudTime').textContent = fmtTime(g.stats.time);
+      var hdl = g.handling();
+      var road = DC.SURFACES[hdl.surface].name + ' · ' + hdl.tire.name + (g.lastEffect === 'slick' ? ' · 打滑!' : '') + (g.boostTimer > 0 ? ' · 加速中' : '');
+      if (road !== this.roadText) { this.roadText = road; $('hudRoad').textContent = road; }
 
       var sig = g.tail.map(function (t) { return t.level; }).join(',');
       if (sig !== this.tailSig) {
@@ -303,6 +324,8 @@
       f.t += dt;
       if (f.t > 1.1) { f.el.remove(); this.floaters.splice(i, 1); continue; }
       v.set(f.x, f.y + f.t * 3, f.z).project(this.camera);
+      if (v.z > 1 || v.y > 0.92) { f.el.style.display = 'none'; continue; }
+      f.el.style.display = '';
       f.el.style.left = ((v.x + 1) / 2 * window.innerWidth) + 'px';
       f.el.style.top = ((1 - v.y) / 2 * window.innerHeight) + 'px';
       f.el.style.opacity = Math.min(1, (1.1 - f.t) * 3);
@@ -325,8 +348,9 @@
     Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (t) { t.classList.toggle('active', t.getAttribute('data-tab') === tab); });
     $('tabCars').classList.toggle('hidden', tab !== 'cars');
     $('tabMods').classList.toggle('hidden', tab !== 'mods');
+    $('tabTires').classList.toggle('hidden', tab !== 'tires');
     this.tab = tab;
-    if (tab === 'cars') this.renderCarGrid(); else this.renderMods();
+    if (tab === 'cars') this.renderCarGrid(); else if (tab === 'tires') this.renderTires(); else this.renderMods();
     this.refreshWallet();
   };
 
@@ -388,7 +412,7 @@
     this.focusLevel = level;
     this.game.showCar(level);
     this.fillCarCard('det', level);
-    $('detWidth').textContent = DC.trackWidthOf(level).toFixed(1);
+    $('detGrip').textContent = Math.round(DC.carGrip(level) * 100);
     var btn = $('btnDetAction');
     var save = DC.Save.data;
     var price = DC.priceOf(level);
@@ -449,6 +473,47 @@
       }
       list.appendChild(card);
     });
+  };
+
+  UI.prototype.renderTires = function () {
+    var list = $('tireList');
+    list.innerHTML = '';
+    var save = DC.Save.data;
+    function bar(label, v, max) {
+      return '<span>' + label + '</span><span class="track"><i style="width:' + Math.min(100, v / max * 100).toFixed(0) + '%"></i></span>';
+    }
+    var surfs = { snow: '雪地', ice: '冰面', sand: '沙土', wet: '湿滑' };
+    DC.TIRES.forEach(function (t) {
+      var owned = DC.Save.ownsTire(t.id), eq = save.tire === t.id;
+      var card = document.createElement('div');
+      card.className = 'mod-card' + (eq ? ' equipped' : '');
+      var extra = [];
+      if (t.surf) for (var k in t.surf) extra.push(surfs[k] + (t.surf[k] >= 1 ? ' +' : ' ') + Math.round((t.surf[k] - 1) * 100) + '%');
+      var btn;
+      if (eq) btn = '<button class="btn good" disabled>使用中</button>';
+      else if (owned) btn = '<button class="btn" data-tire="' + t.id + '">装备</button>';
+      else btn = '<button class="btn ' + (save.coins >= t.price ? 'primary' : '') + '" data-tire="' + t.id + '"' + (save.coins >= t.price ? '' : ' disabled') + '><span class="coin-icon"></span>' + DC.fmt(t.price) + '</button>';
+      card.innerHTML = '<div class="tire-swatch" style="--tc:' + t.color + '"></div><div><div class="mod-name" style="color:' + t.color + '">' + t.name + '</div>' +
+        '<div class="mod-desc">' + t.desc + '</div>' +
+        '<div class="stat-bars">' + bar('抓地力', t.grip, 1.8) + bar('转向响应', t.resp, 1.5) + bar('滑行距离', 1 / t.grip, 1.25) + '</div>' +
+        (extra.length ? '<div class="mod-effect">' + extra.join(' · ') + '</div>' : '') + '</div>' + btn;
+      list.appendChild(card);
+    });
+  };
+
+  UI.prototype.tireAction = function (id) {
+    var t = DC.tireOf(id), save = DC.Save.data;
+    if (!DC.Save.ownsTire(id)) {
+      if (save.coins < t.price) { DC.Audio.deny(); return; }
+      save.coins -= t.price;
+      save.tires.push(id);
+      DC.Audio.buy();
+      this.toast('购入 ' + t.name, t.color);
+    } else DC.Audio.click();
+    save.tire = id;
+    DC.Save.save();
+    this.renderTires();
+    this.refreshWallet();
   };
 
   UI.prototype.buyMod = function (id) {

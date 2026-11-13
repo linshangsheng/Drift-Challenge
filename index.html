@@ -21,6 +21,7 @@
         </div>
       </div>
       <div class="hud-speed"><span id="hudSpeed">0</span><small>km/h</small></div>
+      <div id="hudRoad" class="hud-road">-</div>
     </div>
     <div class="hud-center">
       <div class="hud-coins"><span class="coin-icon"></span><span id="hudCoins">0</span></div>
@@ -42,7 +43,10 @@
   <div id="menu" class="screen">
     <div class="menu-top">
       <div class="wallet"><span class="coin-icon"></span><span id="menuCoins">0</span></div>
-      <button id="btnFullscreen" class="icon-btn" title="全屏">⛶</button>
+      <div class="top-btns">
+        <button id="btnSettings" class="icon-btn" title="设置">⚙️</button>
+        <button id="btnFullscreen" class="icon-btn" title="全屏">⛶</button>
+      </div>
     </div>
     <div class="menu-title">
       <h1>漂移挑战</h1>
@@ -60,9 +64,9 @@
       </div>
       <button id="btnStart" class="btn primary big">开始游戏 <kbd>空格</kbd></button>
       <div class="menu-row">
-        <button id="btnGarage" class="btn">🚗 车库商店</button>
+        <button id="btnGarage" class="btn">🚗 车库</button>
+        <button id="btnTires" class="btn">🛞 轮胎</button>
         <button id="btnMods" class="btn">🔧 改装</button>
-        <button id="btnSettings" class="btn">⚙️ 设置</button>
       </div>
     </div>
   </div>
@@ -80,7 +84,7 @@
         <div class="car-stats">
           <div><b id="detSpeed">0</b><small>极速 km/h</small></div>
           <div><b id="detIncome">0</b><small>金币 / 秒</small></div>
-          <div><b id="detWidth">0</b><small>起步赛道宽 m</small></div>
+          <div><b id="detGrip">0</b><small>抓地力</small></div>
         </div>
         <button id="btnDetAction" class="btn primary big">购买</button>
       </div>
@@ -88,11 +92,16 @@
     <div class="shop-panel">
       <div class="tabs">
         <button class="tab active" data-tab="cars">车辆 <small>100</small></button>
+        <button class="tab" data-tab="tires">轮胎</button>
         <button class="tab" data-tab="mods">改装</button>
       </div>
       <div id="tabCars" class="tab-body">
         <div id="tierFilter" class="tier-filter"></div>
         <div id="carGrid" class="car-grid"></div>
+      </div>
+      <div id="tabTires" class="tab-body hidden">
+        <p class="tab-tip">轮胎决定漂移手感：抓地力越低，甩尾滑得越远；转向响应越高，车头转得越快。不同路面上的表现也不一样。</p>
+        <div id="tireList" class="mod-list"></div>
       </div>
       <div id="tabMods" class="tab-body hidden">
         <div id="modList" class="mod-list"></div>
@@ -140,9 +149,11 @@
       <div class="help">
         <b>玩法说明</b>
         <ul>
-          <li>按住空格（手机按住屏幕）车辆向左漂移，松开向右漂移。</li>
-          <li>冲出 Z 字赛道会坠入悬崖，本局结束。</li>
-          <li>撞上路上的车会把它吃进车尾；两辆同级车会自动合成高一级车。</li>
+          <li>按住空格（手机按住屏幕）车头转向左，松开转向右；车身会靠惯性侧滑一段，要提前转向。</li>
+          <li>滑行距离和车速、路面（雪地、沙土、湿滑、结冰）、车型和轮胎有关。</li>
+          <li>车身完全离开路面才会坠崖；飞跃坡、断桥要保持方向，空中无法改变行进方向。</li>
+          <li>加速带会短暂提升车速上限，油污打滑区抓地力大幅下降。</li>
+          <li>追上路上行驶的车辆即可吃进车尾；两辆同级车会自动合成高一级车。</li>
           <li>车尾合成出与车头同级的车时，车头升级，速度和收益随之提高。</li>
           <li>坚持越久、等级越高，金币越多。金币可以在车库买更好的起步车和改装。</li>
         </ul>
