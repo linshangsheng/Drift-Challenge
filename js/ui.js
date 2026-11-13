@@ -297,7 +297,8 @@
       $('hudIncome').textContent = '+' + DC.fmtIncome(DC.incomeOf(h.level) * g.turbo) + '/秒';
       $('hudTime').textContent = fmtTime(g.stats.time);
       var hdl = g.handling();
-      var road = DC.SURFACES[hdl.surface].name + ' · ' + hdl.tire.name + (g.lastEffect === 'slick' ? ' · 打滑!' : '') + (g.boostTimer > 0 ? ' · 加速中' : '');
+      var road = DC.SURFACES[hdl.surface].name + ' · ' + hdl.tire.name + (g.lastEffect === 'slick' ? ' · 打滑!' : '') + (g.boostTimer > 0 ? ' · 加速中' : '') +
+        (g.driftAngle > 6 ? ' · 漂移角 ' + Math.round(g.driftAngle) + '°' : '');
       if (road !== this.roadText) { this.roadText = road; $('hudRoad').textContent = road; }
 
       var sig = g.tail.map(function (t) { return t.level; }).join(',');
@@ -497,7 +498,7 @@
       else btn = '<button class="btn ' + (save.coins >= t.price ? 'primary' : '') + '" data-tire="' + t.id + '"' + (save.coins >= t.price ? '' : ' disabled') + '><span class="coin-icon"></span>' + DC.fmt(t.price) + '</button>';
       card.innerHTML = '<div class="tire-swatch" style="--tc:' + t.color + '"></div><div><div class="mod-name" style="color:' + t.color + '">' + t.name + '</div>' +
         '<div class="mod-desc">' + t.desc + '</div>' +
-        '<div class="stat-bars">' + bar('抓地力', t.grip, 1.8) + bar('转向响应', t.resp, 1.5) + bar('滑行距离', 1 / t.grip, 1.25) + '</div>' +
+        '<div class="stat-bars">' + bar('抓地力', t.grip, 1.8) + bar('转向响应', t.resp, 1.5) + bar('滑行距离', 1 / (t.grip * t.kin), 2.1) + '</div>' +
         (extra.length ? '<div class="mod-effect">' + extra.join(' · ') + '</div>' : '') + '</div>' + btn;
       list.appendChild(card);
     });

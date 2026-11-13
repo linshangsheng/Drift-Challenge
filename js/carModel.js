@@ -1099,11 +1099,11 @@
   };
   DC.carGrip = function (level) {
     var t = DC.carOf(level).type;
-    var g = { bus: 0.72, dbus: 0.7, schoolbus: 0.72, fire: 0.72, aerial: 0.7, boxvan: 0.8 }[t];
+    var g = { bus: 0.85, dbus: 0.84, schoolbus: 0.85, fire: 0.85, aerial: 0.84, boxvan: 0.9 }[t];
     if (g) return g;
     var base = TYPES[t].grip;
-    // 同类车中等级越高抓地力略好
-    return base * (1 + (level - 1) / 99 * 0.12);
+    // 车型的轮胎摩擦系数倍率（跑车更高、重型车更低）
+    return Math.sqrt(base) * (1 + (level - 1) / 99 * 0.06);
   };
 
   // ---------- 环境反射贴图（让车漆、镀铬、玻璃有反光） ----------

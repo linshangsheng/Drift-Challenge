@@ -156,12 +156,14 @@ if (window.THREE && THREE.ColorManagement) THREE.ColorManagement.legacyMode = fa
   // ---------- 经济 / 性能公式 ----------
   function p(level) { return (level - 1) / (DC.MAX_LEVEL - 1); }
   // 极速（米/秒），车越高级上限越高
-  DC.speedOf = function (level) { return 20 + 56 * Math.pow(p(level), 0.9); };
+  DC.speedOf = function (level) { return 20 + 46 * Math.pow(p(level), 0.9); };
   // 仪表显示的极速（km/h）
   DC.kmhOf = function (level) { return Math.round(60 + 440 * Math.pow(p(level), 0.9)); };
   DC.toKmh = function (v, level) { return v / DC.speedOf(level) * DC.kmhOf(level); };
   // 加速度（米/秒²）
-  DC.accelOf = function (level) { return 7 + 13 * p(level); };
+  DC.accelOf = function (level) { return 15 + 25 * p(level); };
+  // 下压力系数：车速越高轮胎法向载荷越大（高级车空气动力学更强）
+  DC.downforceOf = function (level) { var v = DC.speedOf(level); return Math.max(0.04, 1 / 6.5 - 30 / (v * v)); };
   DC.incomeOf = function (level) { return Math.pow(1.1, level - 1); };
   DC.mergeBonusOf = function (level) { return Math.round(DC.incomeOf(level) * 3); };
 
@@ -187,28 +189,29 @@ if (window.THREE && THREE.ColorManagement) THREE.ColorManagement.legacyMode = fa
   DC.carOf = function (level) { return DC.CARS[Math.max(1, Math.min(DC.MAX_LEVEL, level)) - 1]; };
 
   // ---------- 路面（随场景变化） ----------
+  // mu：静摩擦系数倍率；kin：滑动摩擦相对静摩擦的比例倍率
   DC.SURFACES = {
-    asphalt: { name: '干燥柏油', slide: 1.0 },
-    snow: { name: '积雪路面', slide: 1.45 },
-    sand: { name: '沙土路面', slide: 1.25 },
-    wet: { name: '湿滑路面', slide: 1.25 },
-    ice: { name: '结冰路面', slide: 1.5 }
+    asphalt: { name: '干燥柏油', mu: 1.0, kin: 1.0 },
+    snow: { name: '积雪路面', mu: 0.7, kin: 0.9 },
+    sand: { name: '沙土路面', mu: 0.78, kin: 0.92 },
+    wet: { name: '湿滑路面', mu: 0.8, kin: 0.9 },
+    ice: { name: '结冰路面', mu: 0.6, kin: 0.85 }
   };
 
   // ---------- 轮胎 ----------
   // grip: 抓地力（越高滑行越短）；resp: 转向响应；surf: 不同路面的额外系数
   DC.TIRES = [
-    { id: 'stock', name: '原厂轮胎', price: 0, grip: 1.0, resp: 1.0, color: '#8a8a8a', desc: '均衡的日常轮胎' },
-    { id: 'eco', name: '节能轮胎', price: 300, grip: 0.8, resp: 0.9, color: '#5cc96b', desc: '硬胎面，抓地弱，滑得又远又飘' },
-    { id: 'drift', name: '漂移专用胎', price: 1500, grip: 0.82, resp: 1.35, color: '#ff4d5e', desc: '转向极快、甩尾滑行长，最爽的漂移手感' },
-    { id: 'allseason', name: '全天候轮胎', price: 4000, grip: 1.08, resp: 1.05, color: '#3fa7ff', desc: '各种路面都比较稳定', surf: { snow: 1.12, wet: 1.12, sand: 1.05, ice: 1.08 } },
-    { id: 'sport', name: '高性能运动胎', price: 12000, grip: 1.2, resp: 1.15, color: '#ffb03d', desc: '干地抓地力强，湿地一般', surf: { wet: 0.92, snow: 0.85, ice: 0.85 } },
-    { id: 'winter', name: '雪地胎', price: 20000, grip: 1.0, resp: 1.0, color: '#bfe6ff', desc: '雪地、冰面抓地大幅提升', surf: { snow: 1.45, ice: 1.4 } },
-    { id: 'offroad', name: '全地形越野胎', price: 20000, grip: 0.95, resp: 0.95, color: '#a87b4f', desc: '沙土路面如履平地', surf: { sand: 1.5, snow: 1.15 } },
-    { id: 'rain', name: '赛车雨胎', price: 60000, grip: 1.15, resp: 1.15, color: '#5ad0ff', desc: '湿滑路面的王者', surf: { wet: 1.5 } },
-    { id: 'semislick', name: '半热熔轮胎', price: 150000, grip: 1.35, resp: 1.25, color: '#ff8a3d', desc: '赛道级抓地，过弯几乎不滑', surf: { wet: 0.9, snow: 0.8, ice: 0.8 } },
-    { id: 'slick', name: '全热熔赛道胎', price: 800000, grip: 1.6, resp: 1.35, color: '#ff2a6d', desc: '干地极限抓地，雨雪天很危险', surf: { wet: 0.7, snow: 0.6, ice: 0.55, sand: 0.8 } },
-    { id: 'legend', name: '传奇竞速胎', price: 5000000, grip: 1.8, resp: 1.45, color: '#3df5ff', desc: '全路面顶级抓地与响应', surf: { wet: 1.1, snow: 1.1, ice: 1.1, sand: 1.1 } }
+    { id: 'stock', kin: 0.78, drift: 1.0, name: '原厂轮胎', price: 0, grip: 1.0, resp: 1.0, color: '#8a8a8a', desc: '均衡的日常轮胎' },
+    { id: 'eco', kin: 0.7, drift: 1.1, name: '节能轮胎', price: 300, grip: 0.8, resp: 0.9, color: '#5cc96b', desc: '硬胎面，抓地弱，滑得又远又飘' },
+    { id: 'drift', kin: 0.62, drift: 1.3, name: '漂移专用胎', price: 1500, grip: 0.82, resp: 1.35, color: '#ff4d5e', desc: '转向极快、甩尾滑行长，最爽的漂移手感' },
+    { id: 'allseason', kin: 0.8, drift: 1.0, name: '全天候轮胎', price: 4000, grip: 1.08, resp: 1.05, color: '#3fa7ff', desc: '各种路面都比较稳定', surf: { snow: 1.12, wet: 1.12, sand: 1.05, ice: 1.08 } },
+    { id: 'sport', kin: 0.8, drift: 0.95, name: '高性能运动胎', price: 12000, grip: 1.2, resp: 1.15, color: '#ffb03d', desc: '干地抓地力强，湿地一般', surf: { wet: 0.92, snow: 0.85, ice: 0.85 } },
+    { id: 'winter', kin: 0.8, drift: 1.0, name: '雪地胎', price: 20000, grip: 1.0, resp: 1.0, color: '#bfe6ff', desc: '雪地、冰面抓地大幅提升', surf: { snow: 1.45, ice: 1.4 } },
+    { id: 'offroad', kin: 0.76, drift: 1.05, name: '全地形越野胎', price: 20000, grip: 0.95, resp: 0.95, color: '#a87b4f', desc: '沙土路面如履平地', surf: { sand: 1.5, snow: 1.15 } },
+    { id: 'rain', kin: 0.8, drift: 1.0, name: '赛车雨胎', price: 60000, grip: 1.15, resp: 1.15, color: '#5ad0ff', desc: '湿滑路面的王者', surf: { wet: 1.5 } },
+    { id: 'semislick', kin: 0.84, drift: 0.9, name: '半热熔轮胎', price: 150000, grip: 1.35, resp: 1.25, color: '#ff8a3d', desc: '赛道级抓地，过弯几乎不滑', surf: { wet: 0.9, snow: 0.8, ice: 0.8 } },
+    { id: 'slick', kin: 0.86, drift: 0.85, name: '全热熔赛道胎', price: 800000, grip: 1.6, resp: 1.35, color: '#ff2a6d', desc: '干地极限抓地，雨雪天很危险', surf: { wet: 0.7, snow: 0.6, ice: 0.55, sand: 0.8 } },
+    { id: 'legend', kin: 0.88, drift: 0.9, name: '传奇竞速胎', price: 5000000, grip: 1.8, resp: 1.45, color: '#3df5ff', desc: '全路面顶级抓地与响应', surf: { wet: 1.1, snow: 1.1, ice: 1.1, sand: 1.1 } }
   ];
   DC.tireOf = function (id) {
     for (var i = 0; i < DC.TIRES.length; i++) if (DC.TIRES[i].id === id) return DC.TIRES[i];

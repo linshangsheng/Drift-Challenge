@@ -37,7 +37,6 @@
     this.camLook = new T.Vector3();
     this.smokeTimer = 0;
     this.time = 0;
-    this.slideTime = 0.2;
     this.engine = 0;
   }
 
@@ -125,7 +124,9 @@
     var h = this.head;
     h.x = s.ax + s.dx * 8; h.z = s.az + s.dz * 8;
     h.velA = h.bodyA = s.angle; h.v = 0; h.y = 0; h.vy = 0; h.air = false;
+    h.ph = DC.Physics.state(h.x, h.z, s.angle, 0);
     this.curSeg = 0;
+    this.autoCorner = -1;
     this.hx = [h.x]; this.hz = [h.z]; this.hy = [0]; this.hd = [0];
     this.headDist = 0;
   };
@@ -503,17 +504,23 @@
     }
   };
 
-  // 自动驾驶（护盾复活后短暂接管，也用于测试）
-  Game.prototype.autoTarget = function () {
-    var s = this.track.get(this.curSeg);
-    if (!s) return this.head.velA;
-    var loc = this.track.localOf(s, this.head.x, this.head.z);
-    var lead = this.head.v * (this.slideTime + 0.07) + 0.5;
-    if (loc.along > s.len - lead) {
-      var n = this.track.get(this.curSeg + 1);
-      if (n) return n.angle;
-    }
-    return s.angle + clamp(-loc.lat * 0.04, -0.15, 0.15);
+  // 自动驾驶（护盾复活后短暂接管，也用于测试）：只用左/右两种输入，
+  // 预测“现在转向”后的物理轨迹，能落到下一段中线时才转
+  Game.prototype.autoTarget = function (P) {
+    var h = this.head, s = this.track.get(this.curSeg), n = this.track.get(this.curSeg + 1);
+    if (!s) return h.bodyA;
+    if (!n) return s.angle;
+    if (this.autoCorner === n.idx) return n.angle;
+    var loc = this.track.localOf(s, h.x, h.z), remain = s.len - loc.along;
+    if (remain > h.v * 1.3 + 20) return s.angle;
+    var src = h.ph;
+    var st = { x: src.x, z: src.z, vx: src.vx, vz: src.vz, psi: src.psi, r: src.r, wheel: src.wheel, out: {} };
+    var PP = Object.assign({}, P, { air: false, slopeA: 0 });
+    for (var i = 0; i < 160; i++) DC.Physics.step(st, PP, n.angle, 1 / 110);
+    var lat = this.track.localOf(n, st.x, st.z).lat;
+    var k = s.dx * n.dz - s.dz * n.dx;
+    if (lat * k >= -0.3 || remain < -s.w / 2 + 1) { this.autoCorner = n.idx; return n.angle; }
+    return s.angle;
   };
 
   Game.prototype.revive = function () {
@@ -524,6 +531,9 @@
     if (s.feat && along > s.feat.a - 2 && along < s.feat.end + 2) along = Math.max(2, s.feat.a - 3);
     h.x = s.ax + s.dx * along; h.z = s.az + s.dz * along;
     h.velA = h.bodyA = s.angle;
+    h.v = Math.max(h.v * 0.7, 10);
+    h.ph = DC.Physics.state(h.x, h.z, s.angle, h.v);
+    this.autoCorner = -1;
     h.y = this.track.heightAt(s, along) || 0; h.vy = 0; h.air = false;
     this.autopilot = 1.3;
     this.shieldLeft--;
@@ -568,41 +578,46 @@
   Game.prototype.handling = function () {
     var h = this.head, surf = this.surfaceKey();
     var tire = this.tire || DC.tireOf(DC.Save.data.tire);
-    var grip = DC.carGrip(h.level) * DC.tireGrip(tire, surf);
-    if (this.lastEffect === 'slick') grip *= 0.45;
+    var grip = DC.carGrip(h.level) * DC.tireGrip(tire, surf) * DC.SURFACES[surf].mu;
+    if (this.lastEffect === 'slick') grip *= 0.6;
     return { grip: grip, surface: surf, tire: tire };
+  };
+
+  // 车辆动力学参数
+  Game.prototype.physParams = function () {
+    var h = this.head, hd = this.handling(), surf = DC.SURFACES[hd.surface], tire = hd.tire;
+    var boost = this.boostTimer > 0;
+    var P = DC.Physics.params({
+      top: DC.speedOf(h.level) * (1 + this.engine * 0.03) * (boost ? 1.35 : 1),
+      accel: DC.accelOf(h.level) * (1 + this.engine * 0.1) * (boost ? 1.6 : 1),
+      mu: hd.grip, kin: Math.min(0.95, tire.kin * surf.kin),
+      D: DC.downforceOf(h.level) * (h.heavy ? 0.85 : 1),
+      len: h.mesh ? h.mesh.userData.length : 4.5,
+      resp: tire.resp * (h.heavy ? 0.85 : 1), drift: tire.drift
+    });
+    P.air = h.air;
+    return P;
   };
 
   Game.prototype.updateHead = function (dt) {
     var h = this.head;
-    var hd = this.handling();
-    var surf = DC.SURFACES[hd.surface];
-    // 滑行时间：车速越快、路面越滑、抓地越差，侧滑持续越久
-    this.slideTime = clamp(4.2 / Math.max(h.v, 8), 0.1, 0.36) * surf.slide / hd.grip;
-    var top = DC.speedOf(h.level) * (1 + this.engine * 0.03);
-    if (this.boostTimer > 0) { this.boostTimer -= dt; top *= 1.35; }
-
+    if (this.boostTimer > 0) this.boostTimer -= dt;
+    var P = this.physParams();
+    // 坡道上重力沿行进方向的分量
+    if (!h.air) P.slopeA = -DC.Physics.G * clamp(h.vy / Math.max(h.v, 3), -0.6, 0.6);
     var target;
-    if (this.autopilot > 0) { this.autopilot -= dt; target = this.autoTarget(); }
+    if (this.autopilot > 0) { this.autopilot -= dt; target = this.autoTarget(P); }
     else target = this.isHolding() ? DC.ANGLE_LEFT : DC.ANGLE_RIGHT;
 
-    // 车头转向：最多 90°，不会超过目标方向
-    var bodyRate = (6.5 + h.v * 0.12) * hd.tire.resp * (h.heavy ? 0.7 : 1);
-    h.bodyA = approach(h.bodyA, target, bodyRate * dt * (h.air ? 0.5 : 1));
-    // 速度方向靠轮胎摩擦慢慢追上车头方向 → 侧滑
-    if (!h.air) h.velA += (h.bodyA - h.velA) * damp(1 / this.slideTime, dt);
-    var slip = h.bodyA - h.velA;
-    var slipAbs = Math.abs(Math.sin(slip));
-
-    // 车速：加速到极速上限，侧滑会损失速度
-    if (!h.air) {
-      h.v -= h.v * slipAbs * 0.7 * dt;
-      var acc = DC.accelOf(h.level) * (1 + this.engine * 0.1) * (h.v < 8 ? 2.2 : 1);
-      if (h.v < top) h.v = Math.min(top, h.v + acc * dt * (1 - 0.6 * (h.v / top) * (h.v / top)));
-      else h.v = Math.max(top, h.v - 10 * dt);
-    }
-    h.x += Math.sin(h.velA) * h.v * dt;
-    h.z += Math.cos(h.velA) * h.v * dt;
+    var ph = h.ph, n = 6, sub = dt / n;
+    ph.x = h.x; ph.z = h.z;
+    for (var i = 0; i < n; i++) DC.Physics.step(ph, P, target, sub);
+    var o = ph.out;
+    h.x = ph.x; h.z = ph.z;
+    h.v = Math.sqrt(ph.vx * ph.vx + ph.vz * ph.vz);
+    if (h.v > 0.5) h.velA = Math.atan2(ph.vx, ph.vz);
+    h.bodyA = ph.psi;
+    h.latA = o.latA; h.lonA = o.lonA;
 
     // 路面与高度
     var ground = this.track.groundAt(h.x, h.z, this.curSeg);
@@ -631,30 +646,35 @@
     }
     if (eff === 'slick' && this.lastEffect !== 'slick') this.notify('slick', {});
     this.lastEffect = eff;
+    if (this.autoCorner >= 0 && this.curSeg >= this.autoCorner) this.autoCorner = -1;
 
     this.track.extend(this.curSeg, h.level, 16);
     this.track.prune(this.curSeg);
     this.pushHistory();
     this.stats.coins += DC.incomeOf(h.level) * this.turbo * dt;
 
-    // 漂移特效
-    var drift = h.air ? 0 : Math.min(1, slipAbs / 0.5);
-    if (drift > 0.15) this.stats.drift += h.v * dt;
+    // 漂移表现：按轮胎接地点的滑动速度
+    var sliding = !h.air && o.slipX > 1;
+    var drift = sliding ? clamp(o.slideV / 14, 0.15, 1) : 0;
+    this.driftAngle = sliding ? Math.abs(o.beta) * 57.3 : 0;
+    if (sliding) this.stats.drift += h.v * dt;
     this.smokeTimer -= dt;
     var L = h.mesh.userData.length, W = h.mesh.userData.width;
     var ca = Math.cos(h.bodyA), sa = Math.sin(h.bodyA);
+    var spin = o.wheelSpin > 3 && !h.air;
     for (var wI = 0; wI < 2; wI++) {
       var side = wI ? 1 : -1;
       var wx = h.x - sa * L * 0.32 + ca * side * W * 0.42;
       var wz = h.z - ca * L * 0.32 - sa * side * W * 0.42;
-      if (drift > 0.12) {
+      if (sliding || spin) {
         this.fx.skid(wI, wx, wz, h.y);
-        if (this.smokeTimer <= 0) this.fx.puff(wx, h.y + 0.3, wz, -Math.sin(h.velA) * 2, -Math.cos(h.velA) * 2, 0.8 + drift * 1.6, this.smokeColor());
+        if (this.smokeTimer <= 0) this.fx.puff(wx, h.y + 0.3, wz, -ph.vx * 0.08, -ph.vz * 0.08, 0.7 + drift * 1.8, this.smokeColor());
       } else if (wI === 1) this.fx.endSkid();
     }
-    if (this.smokeTimer <= 0) this.smokeTimer = 0.03;
+    if (this.smokeTimer <= 0) this.smokeTimer = sliding ? 0.025 : 0.05;
     this.drift = drift;
-    DC.Audio.update(h.v / top, drift, true, this.boostTimer > 0);
+    DC.Audio.update({ speedN: h.v / P.top, wheelN: (h.v + o.wheelSpin) / P.top, slip: h.air ? 0 : o.slipX,
+      slideV: h.air ? 0 : o.slideV, surface: this.surfaceKey(), running: true, boost: this.boostTimer > 0, air: h.air });
   };
 
   Game.prototype.smokeColor = function () {
@@ -693,12 +713,12 @@
       this.world.update(dt, this.camera);
       this.track.syncThemeMats(dt);
       this.fx.update(dt);
-      DC.Audio.update(0, 0, false);
+      DC.Audio.update(null);
       return;
     }
 
     if (this.state === 'paused' || this.state === 'over') {
-      DC.Audio.update(0, 0, false);
+      DC.Audio.update(null);
       if (this.state === 'over') { if (this.falling) this.updateFallingBodies(dt); this.fx.update(dt); }
       return;
     }
@@ -708,7 +728,7 @@
       var c = Math.ceil(this.countdown);
       if (c !== this.lastCount && c > 0) { this.lastCount = c; DC.Audio.countdown(false); this.notify('count', { n: c }); }
       if (this.countdown <= 0) { this.state = 'running'; DC.Audio.countdown(true); this.notify('count', { n: 0 }); }
-      DC.Audio.update(0.05, 0, true);
+      DC.Audio.update({ speedN: 0.05, wheelN: 0.05, running: true });
     }
 
     if (this.state === 'running') {
@@ -722,7 +742,7 @@
       h.x += h.fvx * dt; h.z += h.fvz * dt; h.y += h.vy * dt;
       h.fvx *= 0.995; h.fvz *= 0.995;
       this.virtualDist += h.v * dt;
-      DC.Audio.update(0, 0, false);
+      DC.Audio.update(null);
       if (this.fallTimer > 2.3) this.finishRun();
     }
 
@@ -732,9 +752,10 @@
         h.mesh.rotation.x += h.spinX * dt;
         h.mesh.rotation.z += h.spinZ * dt;
       } else {
-        var slip = h.bodyA - h.velA;
-        var pitch = h.air ? clamp(-h.vy * 0.02, -0.35, 0.35) : clamp(-h.vy * 0.012, -0.2, 0.2);
-        h.mesh.rotation.set(pitch, h.bodyA, clamp(-slip * 0.12, -0.12, 0.12), 'YXZ');
+        // 车身姿态：加速后蹲、侧向力使车身外倾
+        var pitch = h.air ? clamp(-h.vy * 0.02, -0.35, 0.35) : clamp(-h.vy * 0.012 - (h.lonA || 0) * 0.002, -0.2, 0.2);
+        this.roll = (this.roll || 0) + (clamp((h.latA || 0) * 0.0011, -0.1, 0.1) - (this.roll || 0)) * damp(10, dt);
+        h.mesh.rotation.set(pitch, h.bodyA, this.roll, 'YXZ');
       }
       if (h.pop > 0) { h.pop = Math.max(0, h.pop - dt * 2.5); var s2 = 1 + h.pop * 0.35; h.mesh.scale.set(s2, s2, s2); }
       else h.mesh.scale.set(1, 1, 1);

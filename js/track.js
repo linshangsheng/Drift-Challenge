@@ -90,7 +90,7 @@
     s.obj.traverse(function (o) { if (o.userData.ownGeo) o.geometry.dispose(); });
   };
 
-  DC.trackWidthOf = function (level) { var p = (level - 1) / 99; return 10.5 - 2.7 * p; };
+  DC.trackWidthOf = function (level) { var p = (level - 1) / 99; return 10.5 + 2.5 * p; };
 
   Track.prototype.reset = function (level, surface) {
     this.clear();
@@ -140,10 +140,10 @@
       var angle = last.angle > 0 ? RIGHT : LEFT;
       // 宽窄变化
       var r = Math.random(), wf;
-      if (r < 0.16) wf = rand(0.58, 0.7);
+      if (r < 0.16) wf = rand(0.68, 0.78);
       else if (r < 0.32) wf = rand(1.25, 1.45);
       else wf = rand(0.9, 1.1);
-      var w = Math.max(5.2, baseW * wf);
+      var w = Math.max(6.5, baseW * wf);
       // 长短变化
       var t = Math.random() < 0.2 ? rand(2.2, 3.2) : rand(0.8 - 0.25 * p, 2.1 - 0.6 * p);
       var len = Math.max(w * 1.9, v * t);
