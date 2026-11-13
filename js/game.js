@@ -112,7 +112,7 @@
     this.roadCars.forEach(function (c) { self.scene.remove(c.mesh); });
     this.roadCars = [];
     this.fx.clear();
-    this.hx = []; this.hz = []; this.hy = []; this.hd = [];
+    this.hx = []; this.hz = []; this.hy = []; this.hd = []; this.hb = [];
     this.headDist = 0;
     this.curSeg = 0;
     this.head.vy = 0; this.head.y = 0; this.head.air = false;
@@ -127,7 +127,7 @@
     h.ph = DC.Physics.state(h.x, h.z, s.angle, 0);
     this.curSeg = 0;
     this.autoCorner = -1;
-    this.hx = [h.x]; this.hz = [h.z]; this.hy = [0]; this.hd = [0];
+    this.hx = [h.x]; this.hz = [h.z]; this.hy = [0]; this.hd = [0]; this.hb = [0];
     this.headDist = 0;
   };
 
@@ -306,12 +306,12 @@
     var d = Math.sqrt(dx * dx + dz * dz);
     if (d >= 0.3) {
       this.headDist = this.hd[n - 1] + d;
-      this.hx.push(h.x); this.hz.push(h.z); this.hy.push(h.y); this.hd.push(this.headDist);
+      this.hx.push(h.x); this.hz.push(h.z); this.hy.push(h.y); this.hd.push(this.headDist); this.hb.push(h.air ? 0 : wrapAngle(h.bodyA - h.velA));
     }
     if (this.hx.length > 4000) {
       var keepFrom = this.headDist - this.tailLength() - 60, cut = 0;
       while (cut < this.hd.length - 2 && this.hd[cut] < keepFrom) cut++;
-      if (cut > 500) { this.hx.splice(0, cut); this.hz.splice(0, cut); this.hy.splice(0, cut); this.hd.splice(0, cut); }
+      if (cut > 500) { this.hx.splice(0, cut); this.hz.splice(0, cut); this.hy.splice(0, cut); this.hd.splice(0, cut); this.hb.splice(0, cut); }
     }
   };
 
@@ -324,13 +324,13 @@
   Game.prototype.sampleAt = function (d, out) {
     var hd = this.hd, n = hd.length;
     if (n < 2 || d <= hd[0]) {
-      out.x = this.hx[0]; out.z = this.hz[0]; out.y = this.hy[0];
+      out.x = this.hx[0]; out.z = this.hz[0]; out.y = this.hy[0]; out.b = 0;
       out.a = n >= 2 ? Math.atan2(this.hx[1] - this.hx[0], this.hz[1] - this.hz[0]) : this.head.velA;
       if (d < hd[0] && n >= 2) { var back = hd[0] - d; out.x -= Math.sin(out.a) * back; out.z -= Math.cos(out.a) * back; }
       return out;
     }
     if (d >= hd[n - 1]) {
-      out.x = this.hx[n - 1]; out.z = this.hz[n - 1]; out.y = this.hy[n - 1];
+      out.x = this.hx[n - 1]; out.z = this.hz[n - 1]; out.y = this.hy[n - 1]; out.b = this.hb[n - 1] || 0;
       out.a = Math.atan2(this.hx[n - 1] - this.hx[n - 2], this.hz[n - 1] - this.hz[n - 2]);
       return out;
     }
@@ -340,12 +340,13 @@
     out.x = this.hx[lo] + (this.hx[hi] - this.hx[lo]) * t;
     out.z = this.hz[lo] + (this.hz[hi] - this.hz[lo]) * t;
     out.y = this.hy[lo] + (this.hy[hi] - this.hy[lo]) * t;
+    out.b = (this.hb[lo] || 0) + ((this.hb[hi] || 0) - (this.hb[lo] || 0)) * t;
     var a0 = Math.max(0, lo - 3), a1 = Math.min(n - 1, hi + 3);
     out.a = Math.atan2(this.hx[a1] - this.hx[a0], this.hz[a1] - this.hz[a0]);
     return out;
   };
 
-  var S = { x: 0, z: 0, y: 0, a: 0 };
+  var S = { x: 0, z: 0, y: 0, a: 0, b: 0 };
 
   Game.prototype.updateTail = function (dt, virtualDist, fallDist) {
     var off = this.head.mesh ? this.head.mesh.userData.length / 2 : 2;
@@ -378,7 +379,8 @@
       } else {
         m.position.set(S.x, S.y, S.z);
       }
-      m.rotation.y = S.a + Math.sin(this.time * 6 + i) * 0.05;
+      // 车尾车辆在同一位置复现车头的漂移姿态
+      m.rotation.y = S.a + S.b * 0.9 + Math.sin(this.time * 6 + i) * 0.03;
       if (t.pop > 0) { t.pop = Math.max(0, t.pop - dt * 3); var sc = 1 + t.pop * 0.5; m.scale.set(sc, sc, sc); }
       else m.scale.set(1, 1, 1);
     }
@@ -461,7 +463,13 @@
       this.vertical(c, hh === null ? null : { h: hh }, dt);
       if (!c.air && hh === null) c.air = true;
       var mdx = c.x - px, mdz = c.z - pz;
-      if (mdx * mdx + mdz * mdz > 1e-5) c.angle += wrapAngle(Math.atan2(mdx, mdz) - c.angle) * damp(10, dt);
+      if (mdx * mdx + mdz * mdz > 1e-5) {
+        var na = c.angle + wrapAngle(Math.atan2(mdx, mdz) - c.angle) * damp(10, dt);
+        var turn = wrapAngle(na - c.angle) / Math.max(dt, 1e-3);
+        c.angle = na;
+        // 转弯时车身甩出一个漂移角
+        c.slip = (c.slip || 0) + (clamp(turn * 0.18, -0.6, 0.6) - (c.slip || 0)) * damp(6, dt);
+      }
       if (c.grow < 1) { c.grow = Math.min(1, c.grow + dt * 3); var g = easeOut(c.grow); c.mesh.scale.set(g, g, g); }
 
       // 吃车
@@ -486,7 +494,7 @@
         }
       }
       c.mesh.position.set(c.x, c.y, c.z);
-      c.mesh.rotation.set(c.air ? -c.vy * 0.015 : 0, c.angle, 0, 'YXZ');
+      c.mesh.rotation.set(c.air ? -c.vy * 0.015 : 0, c.angle + (c.slip || 0), 0, 'YXZ');
     }
     // 维持前方车流
     if (this.state === 'running') {
