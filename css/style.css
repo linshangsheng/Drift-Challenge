@@ -245,7 +245,7 @@ body.shop-mode #toasts { left: 26%; width: 46vw; }
 .modal-box h2 { margin: 0 0 4px; text-align: center; font-size: 26px; }
 .muted { color: var(--muted); font-size: 13px; text-align: center; margin: 0; }
 .over-coins { text-align: center; font-size: 44px; font-weight: 900; color: var(--gold); }
-.over-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.over-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .record { text-align: center; color: var(--accent2); font-weight: 900; letter-spacing: 2px; animation: pop .5s ease; }
 .toggle { display: flex; gap: 10px; align-items: center; font-size: 15px; padding: 6px 0; cursor: pointer; }
 .toggle input { width: 20px; height: 20px; accent-color: var(--accent); }

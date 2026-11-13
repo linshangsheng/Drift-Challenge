@@ -274,6 +274,8 @@
     $('overLevel').textContent = 'Lv' + st.maxLevel;
     $('overEaten').textContent = st.eaten;
     $('overMerges').textContent = st.merges;
+    $('overJumps').textContent = st.jumps || 0;
+    $('overDrift').textContent = DC.fmt(st.drift || 0);
     $('overCar').textContent = '最终座驾：' + DC.carOf(st.maxLevel).name + ' · 钱包 ' + DC.fmt(DC.Save.data.coins);
     var r = [];
     if (rec.level) r.push('最高等级'); if (rec.time) r.push('最长时间'); if (rec.coins) r.push('单局金币');

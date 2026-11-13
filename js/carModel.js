@@ -211,9 +211,27 @@
     var w = P.W / 2 * Math.pow(Math.max(0, 1 - Math.pow(a, p)), 1 / p);
     if (P.taperF && u > 0) w *= 1 - P.taperF * u * u;
     if (P.taperR && u < 0) w *= 1 - P.taperR * u * u;
+    if (P.bulge && P.axles) {
+      var z = this.zc + u * this.hl, ar = P.wR + (P.archGap || 0.06);
+      for (var i = 0; i < P.axles.length; i++) {
+        var q = (z - P.axles[i]) / (ar * 1.25);
+        w += P.W / 2 * P.bulge * Math.exp(-q * q);
+      }
+    }
     return w;
   };
-  Shape.prototype.y1 = function (u) { return curve(this.P.top, u); };
+  Shape.prototype.y1 = function (u) {
+    var P = this.P, y = curve(P.top, u);
+    if (P.axles && P.hump !== false) {
+      // 轮拱上方的翼子板隆起，保证车轮被包住
+      var z = this.zc + u * this.hl, ar = P.wR + (P.archGap || 0.06), need = P.wR + ar + 0.1;
+      for (var i = 0; i < P.axles.length; i++) {
+        var q = Math.abs(z - P.axles[i]) / (ar * 1.6);
+        if (q < 1) y = Math.max(y, lerp(y, need, Math.cos(q * Math.PI / 2)));
+      }
+    }
+    return y;
+  };
   Shape.prototype.y0 = function (u) {
     var P = this.P, z = this.z(u);
     var y = P.clear + (P.bumpF || 0) * smooth(0.7, 1, u) + (P.bumpR || 0) * smooth(0.7, 1, -u);
@@ -231,14 +249,18 @@
     return this.w(u) * Math.pow(Math.max(0, 1 - Math.pow(Math.abs(s), n)), 1 / n);
   };
   // 车头/车尾表面在横向 x 处的 z 坐标
-  Shape.prototype.frontZ = function (x) {
-    var r = clamp(2 * Math.abs(x) / this.P.W, 0, 0.999);
-    return this.z(Math.pow(1 - Math.pow(r, this.P.pF), 1 / this.P.pF));
+  // 数值求解车头/车尾表面在横向 x 处的 z（考虑轮拱外扩等变形）
+  Shape.prototype.endU = function (x, dir) {
+    var ax = Math.abs(x), lo = 0, hi = 1;
+    if (this.w(dir * 0.0) < ax) return 0;
+    for (var i = 0; i < 22; i++) {
+      var mid = (lo + hi) / 2;
+      if (this.w(dir * mid) >= ax) lo = mid; else hi = mid;
+    }
+    return dir * lo;
   };
-  Shape.prototype.rearZ = function (x) {
-    var r = clamp(2 * Math.abs(x) / this.P.W, 0, 0.999);
-    return this.z(-Math.pow(1 - Math.pow(r, this.P.pR), 1 / this.P.pR));
-  };
+  Shape.prototype.frontZ = function (x) { return this.z(this.endU(x, 1)); };
+  Shape.prototype.rearZ = function (x) { return this.z(this.endU(x, -1)); };
 
   function sampleU(P) {
     var N = Math.round(26 + P.L * 5), us = [], i;
@@ -442,9 +464,9 @@
     }
   }
 
-  function wheels(B, P, W) {
-    var x = P.W / 2 - W.tw / 2 - (W.inset || 0.03);
+  function wheels(B, P, W, S) {
     (P.axles || []).forEach(function (za, i) {
+      var x = S ? S.w((za - S.zc) / S.hl) * 0.985 - W.tw / 2 : P.W / 2 - W.tw / 2 - (W.inset || 0.03);
       wheel(B, W, x, za, 1);
       wheel(B, W, -x, za, -1);
       if (W.dual && i > 0) { // 后轴双胎
@@ -471,7 +493,7 @@
   function headlights(B, S, o) {
     var P = S.P, style = o.lights || 'rect';
     var u = 0.9, y = o.lightY || lerp(S.y0(u), S.y1(u), 0.7);
-    var x = o.lightX || P.W * 0.32;
+    var x = o.lightX || Math.min(P.W * 0.32, S.w(0.86) * 0.7);
     var c = '#f4f8ff';
     for (var s = -1; s <= 1; s += 2) {
       var xx = s * x, zf = S.frontZ(xx);
@@ -483,15 +505,20 @@
         B.add(ring, 'chrome', '#dddddd', mat(xx, y, zf + 0.025, 0, -frontAngle(S, xx), 0));
       } else if (style === 'slim') {
         flushFront(B, 'matte', '#0b0b0b', S, xx, y, P.W * 0.2, 0.1, 0.1, 0.03);
-        flushFront(B, 'light', c, S, xx, y + 0.01, P.W * 0.19, 0.04, 0.1, 0.04);
+        flushFront(B, 'glass', '#9fb0c2', S, xx, y, P.W * 0.19, 0.08, 0.1, 0.036);
+        flushFront(B, 'light', c, S, xx, y + 0.015, P.W * 0.19, 0.03, 0.1, 0.042);
         flushFront(B, 'light', c, S, s * (x - P.W * 0.06), y - 0.04, P.W * 0.05, 0.03, 0.1, 0.035);
       } else if (style === 'bus') {
         flushFront(B, 'light', c, S, s * (P.W / 2 - 0.3), y, 0.28, 0.14, 0.06, 0.03);
         flushFront(B, 'light', '#ffb020', S, s * (P.W / 2 - 0.1), y, 0.12, 0.08, 0.06, 0.03);
       } else {
-        flushFront(B, 'matte', '#0b0b0b', S, xx, y, P.W * 0.22, 0.17, 0.1, 0.025);
-        flushFront(B, 'light', c, S, xx, y + 0.01, P.W * 0.19, 0.11, 0.1, 0.035);
-        flushFront(B, 'light', '#ffb020', S, s * (x + P.W * 0.1), y - 0.02, P.W * 0.035, 0.06, 0.1, 0.035);
+        var lw = P.W * 0.21, lh = 0.15;
+        flushFront(B, 'matte', '#0b0b0b', S, xx, y, lw + 0.04, lh + 0.04, 0.1, 0.02);
+        flushFront(B, 'glass', '#b9c7d6', S, xx, y, lw, lh, 0.1, 0.03);
+        flushFront(B, 'light', c, S, s * (x - lw * 0.22), y + 0.01, lw * 0.3, lh * 0.55, 0.1, 0.038);
+        flushFront(B, 'chrome', '#e6e6e6', S, s * (x + lw * 0.18), y + 0.01, lw * 0.3, lh * 0.5, 0.1, 0.036);
+        flushFront(B, 'light', '#ffffff', S, xx, y - lh * 0.38, lw * 0.9, 0.022, 0.1, 0.04);
+        flushFront(B, 'light', '#ffb020', S, s * (x + lw * 0.42), y + 0.01, lw * 0.12, lh * 0.5, 0.1, 0.039);
       }
     }
   }
@@ -516,7 +543,7 @@
     }
     for (var s = -1; s <= 1; s += 2) {
       var tall = o.tails === 'tall';
-      var x = P.W * (tall ? 0.43 : 0.33);
+      var x = Math.min(P.W * (tall ? 0.43 : 0.33), S.w(-0.88) * (tall ? 0.9 : 0.72));
       var w = tall ? 0.12 : P.W * 0.2, h = tall ? 0.5 : 0.1;
       flushRear(B, 'matte', '#2a0505', S, s * x, y, w + 0.03, h + 0.03, 0.08, 0.025);
       flushRear(B, 'light', red, S, s * x, y, w, h, 0.08, 0.035);
@@ -592,12 +619,49 @@
       for (var s = -1; s <= 1; s += 2) box(B, 'chrome', '#d0d0d0', 0.025, 0.035, 0.16, s * x, y, S.z(u));
     });
   }
+  // 雨刮、天线、雾灯、侧转向灯、后扩散器等小细节
+  function details(B, S, G, gh, o, car) {
+    var P = S.P, W = P.W;
+    // 雨刮
+    var uw = G.gF - 0.035, yw = gh.yb(uw) + 0.05, zw = S.z(uw);
+    for (var s = -1; s <= 1; s += 2) {
+      var x0 = s > 0 ? -W * 0.32 : 0.02;
+      beam(B, 'matte', '#0c0c0c', V(x0, yw, zw), V(x0 + W * 0.3, yw + 0.06, zw - 0.06), 0.02, 0.015);
+    }
+    // 鲨鱼鳍天线
+    if (car.type !== 'micro' && car.type !== 'microvan' && !o.police && !o.taxi && TYPES[car.type].grip < 1.1) {
+      var ua = G.rR + 0.03;
+      box(B, 'paint', G.roofColor || car.color, 0.06, 0.07, 0.18, 0, gh.yt(ua) + 0.04, S.z(ua), -0.25);
+    }
+    // 雾灯
+    if (/suv|offroad|pickup|sedan|mpv/.test(car.type)) {
+      for (var f = -1; f <= 1; f += 2) {
+        var fx = f * W * 0.36, fy = S.y0(0.95) + 0.14;
+        var fg = new T.CylinderGeometry(0.05, 0.05, 0.06, 14);
+        fg.rotateX(Math.PI / 2);
+        B.add(fg, 'light', '#fff4d6', mat(fx, fy, S.frontZ(fx) - 0.01, 0, -frontAngle(S, fx), 0));
+      }
+    }
+    // 侧转向灯
+    var us = 0.72;
+    var ys = lerp(S.y0(us), S.y1(us), 0.7);
+    for (var t = -1; t <= 1; t += 2) box(B, 'light', '#ffa020', 0.02, 0.035, 0.1, t * (S.sideX(us, ys) + 0.005), ys, S.z(us));
+    // 后扩散器 / 下护板
+    var dy = S.y0(-0.95) + 0.08;
+    for (var k = -2; k <= 2; k++) flushRear(B, 'matte', '#121212', S, k * W * 0.17, dy, W * 0.18, 0.12, 0.08, 0.02);
+    // 后窗刹车灯
+    if (TYPES[car.type].grip < 1.1 && car.type !== 'offroad') {
+      var ub = G.rR - 0.01;
+      box(B, 'light', '#ff1a1a', W * 0.22, 0.03, 0.04, 0, gh.yt(ub) - 0.03, S.z(ub) - 0.02);
+    }
+  }
+
   function sideSkirt(B, S, color) {
     var P = S.P;
     if (!P.axles || P.axles.length < 2) return;
     var z1 = P.axles[0] - P.wR - 0.12, z2 = P.axles[P.axles.length - 1] + P.wR + 0.12;
-    var y = P.clear + 0.06, x = S.sideX(0, y) * 0.99;
-    boxPair(B, 'matte', color || '#0e0e0e', 0.06, 0.1, z1 - z2, x, y, (z1 + z2) / 2);
+    var y = Math.max(P.clear + 0.06, S.y0(0) + 0.05), x = S.sideX(0, y) * 0.995;
+    boxPair(B, 'matte', color || '#0e0e0e', 0.05, 0.08, z1 - z2, x, y, (z1 + z2) / 2);
   }
   function wing(B, S, o, color) {
     var P = S.P, kind = o.wing;
@@ -645,8 +709,8 @@
       top: [[-1, 0.8], [-0.97, 1.12], [0.65, 1.15], [0.95, 1.08], [1, 0.82]], archGap: 0.1,
       gh: { gR: -0.97, rR: -0.94, rF: 0.36, gF: 0.46, roof: 1.98, tumble: 0.94, n: 8, bU: [-0.06, -0.55], cW: 0.14, wsCurve: 1 },
       grip: 0.85, lights: 'round', spare: true, flares: true, rims: 'steel', tails: 'tall' },
-    pickup: { L: 5.7, W: 2.02, clear: 0.34, wR: 0.42, tw: 0.27, ax: [0.62, -0.58], pF: 4, pR: 14, nTop: 4, nBot: 6,
-      top: [[-1, 1.1], [-0.15, 1.1], [-0.1, 1.12], [0.62, 1.18], [0.92, 1.1], [1, 0.75]], archGap: 0.1,
+    pickup: { L: 5.7, W: 2.02, clear: 0.36, wR: 0.42, tw: 0.27, ax: [0.62, -0.58], pF: 7, pR: 14, nTop: 6, nBot: 7,
+      top: [[-1, 1.12], [-0.15, 1.12], [-0.1, 1.16], [0.7, 1.24], [0.95, 1.2], [1, 0.95]], archGap: 0.1, grilleW: 1.1, grilleH: 0.36,
       gh: { gR: -0.13, rR: -0.09, rF: 0.18, gF: 0.46, roof: 1.98, tumble: 0.9, n: 6, bU: [0.04], cW: 0.12 },
       grip: 0.85, bed: true, flares: true, tails: 'tall' },
     mpv: { L: 5.05, W: 1.88, clear: 0.17, wR: 0.34, tw: 0.22, ax: [0.62, -0.6], pF: 2.8, pR: 6, nTop: 3.4, nBot: 5,
@@ -672,13 +736,50 @@
   };
 
   // 乘用车通用生成
+  // 按等级生成确定性的随机数，让同类车型各有差异
+  function seeded(seed) {
+    var a = seed * 2654435761 >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      var t = a;
+      t = Math.imul(t ^ t >>> 15, t | 1);
+      t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
   function buildPassenger(B, car) {
-    var o = Object.assign({}, TYPES[car.type], car.opts || {});
+    var base = TYPES[car.type];
+    var rnd = seeded(car.level * 97 + 13);
+    var jr = function (a) { return (rnd() * 2 - 1) * a; };
+    var vary = car.opts && car.opts.noVary ? 0 : 1;
+    // 车身轮廓微调
+    var top = base.top.map(function (k, i) {
+      var edge = i === 0 || i === base.top.length - 1;
+      return [k[0], k[1] * (1 + vary * jr(edge ? 0.08 : 0.045))];
+    });
+    var gh = Object.assign({}, base.gh);
+    gh.gF += vary * jr(0.04); gh.rF += vary * jr(0.05); gh.rR += vary * jr(0.05);
+    gh.roof *= 1 + vary * jr(0.035);
+    gh.tumble = Math.min(0.97, gh.tumble * (1 + vary * jr(0.05)));
+    var o = Object.assign({}, base, {
+      top: top, gh: gh,
+      pF: base.pF * (1 + vary * jr(0.12)), pR: base.pR * (1 + vary * jr(0.12)),
+      nTop: base.nTop * (1 + vary * jr(0.1))
+    }, car.opts || {});
+    var sporty = base.grip >= 1.05 || car.type === 'muscle';
+    if (!car.opts.rims && !base.rims) o.rims = ['five', 'multi', 'y', 'mesh', 'turbine', 'five'][Math.floor(rnd() * 6)];
+    if (!car.opts.rimColor && o.rims !== 'steel') {
+      var rc = ['#c8c8c8', '#c8c8c8', '#2b2b2b', '#8d8d8d', '#1a1a1a'][Math.floor(rnd() * 5)];
+      if (rc !== '#c8c8c8') o.rimColor = rc;
+    }
+    if (!car.opts.caliper && sporty) o.caliper = ['#cc0000', '#f0c419', '#1846b8', '#ff6a00', null][Math.floor(rnd() * 5)] || undefined;
     var L = o.L * (o.sL || 1), W = o.W * (o.sW || 1);
     var hl = L / 2;
     var P = {
       L: L, W: W, clear: o.clear, wR: o.wR, archGap: o.archGap || 0.06, pF: o.pF, pR: o.pR, nTop: o.nTop, nBot: o.nBot,
       top: o.top.map(function (k) { return [k[0], k[1] * (o.sH || 1)]; }), bumpF: o.bumpF, bumpR: o.bumpR,
+      bulge: o.bulge !== undefined ? o.bulge : ({ mid: 0.07, hyper: 0.08, coupe: 0.05, muscle: 0.045, offroad: 0.03 }[car.type] || 0.025),
       axles: o.ax.map(function (a) { return a * hl; })
     };
     var S = new Shape(P);
@@ -690,7 +791,7 @@
     if (o.ghOverride) Object.assign(G, o.ghOverride);
     var gh = greenhouse(B, S, G, color);
     var W8 = { R: o.wR, tw: o.tw, style: o.rims || 'five', rim: o.rimColor, caliper: o.caliper, rimBucket: o.rimColor && o.rimColor !== '#c8c8c8' ? 'paint' : 'chrome' };
-    wheels(B, P, W8);
+    wheels(B, P, W8, S);
     headlights(B, S, o);
     taillights(B, S, o);
     grille(B, S, o);
@@ -698,7 +799,8 @@
     mirrors(B, S, G, gh, color);
     handles(B, S, gh, [lerp(G.gR, G.gF, 0.62)].concat(G.bU && G.bU.length ? [G.bU[0] - 0.12] : []));
     if (!o.noSeams) seams(B, S, gh, [Math.min(G.gF - 0.02, G.rF + 0.06)].concat(G.bU || []).concat(G.bU && G.bU.length && car.type !== 'micro' ? [G.rR - 0.02] : []));
-    if (o.sporty || TYPES[car.type].grip >= 1.05) sideSkirt(B, S, '#0d0d0d');
+    sideSkirt(B, S, '#141414');
+    details(B, S, G, gh, o, car);
 
     // 包围/护板
     if (o.cladding || o.flares) {
@@ -761,7 +863,17 @@
         box(B, 'matte', '#0a0a0a', W * 0.42, 0.02, 0.06, 0, S.y1(lu) + 0.005, S.z(lu));
       }
     }
-    if (o.fin) beam(B, 'paint', accent || color, V(0, gh.yt(G.rR) - 0.02, S.z(G.rR)), V(0, S.y1(-0.92) + 0.18, S.z(-0.92)), 0.03, 0.18);
+    if (o.fin) {
+      // 竖直尾鳍：从车顶延伸到车尾
+      var zr = S.z(G.rR), yr = gh.yt(G.rR) - 0.01, zt = S.z(-0.9), yd = S.y1(-0.9);
+      var fs = new T.Shape();
+      fs.moveTo(zr, yr); fs.lineTo(zt, Math.max(yd + 0.22, yr - 0.12)); fs.lineTo(zt, yd - 0.02); fs.lineTo(zr - 0.4, gh.yb(G.rR - 0.05));
+      fs.closePath();
+      var fg = new T.ExtrudeGeometry(fs, { depth: 0.03, bevelEnabled: false });
+      fg.translate(0, 0, -0.015);
+      fg.rotateY(-Math.PI / 2);
+      B.add(fg, 'paint', accent || color);
+    }
     if (o.splitter) {
       var spw = S.w(0.9) * 1.9;
       box(B, 'matte', '#0b0b0b', spw, 0.03, 0.3, 0, S.y0(0.95) + 0.02, S.z(0.93));
