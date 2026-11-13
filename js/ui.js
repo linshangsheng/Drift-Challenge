@@ -1,0 +1,493 @@
+/* 界面：主菜单、HUD、商店、改装、弹窗 */
+(function (DC) {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+
+  function fmtTime(sec) {
+    var m = Math.floor(sec / 60), s = Math.floor(sec % 60);
+    return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+  }
+
+  function UI(game, camera) {
+    this.game = game;
+    this.camera = camera;
+    game.ui = this;
+    this.screen = 'menu';
+    this.focusLevel = DC.Save.data.selected;
+    this.tierFilter = -1;
+    this.floaters = [];
+    this.tailSig = '';
+    this.bind();
+    this.applySettings();
+    // 触屏设备的操作提示
+    if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) {
+      $('hint').innerHTML = '按住屏幕 向左漂移 · 松开向右漂移';
+      $('btnStart').textContent = '开始游戏';
+      $('btnRetry').textContent = '再来一局';
+    }
+    this.showMenu();
+  }
+
+  UI.prototype.bind = function () {
+    var self = this;
+    var click = function (id, fn) {
+      $(id).addEventListener('click', function (e) { e.stopPropagation(); DC.Audio.unlock(); DC.Audio.click(); fn(e); });
+    };
+    click('btnStart', function () { self.startGame(); });
+    click('btnGarage', function () { self.showShop('cars'); });
+    click('btnMods', function () { self.showShop('mods'); });
+    click('btnSettings', function () { self.openModal('settingsModal'); });
+    click('btnSettingsClose', function () { self.closeModal('settingsModal'); });
+    click('btnFullscreen', function () { DC.toggleFullscreen(); });
+    click('btnShopBack', function () { self.showMenu(); });
+    click('btnPause', function () { self.pauseGame(); });
+    click('btnResume', function () { self.resumeGame(); });
+    click('btnQuit', function () {
+      self.closeModal('pauseModal');
+      self.game.state = 'running';
+      self.game.finishRun(true);
+    });
+    click('btnRetry', function () { self.startGame(); });
+    click('btnOverShop', function () { self.closeModal('overModal'); self.showShop('cars'); });
+    click('btnOverMenu', function () { self.closeModal('overModal'); self.showMenu(); });
+    click('btnDetAction', function () { self.detailAction(); });
+    click('btnReset', function () {
+      self.confirm('重置存档', '金币、车辆和改装都会清空，确定吗？', function () {
+        DC.Save.reset();
+        self.focusLevel = 1;
+        self.applySettings();
+        self.closeModal('settingsModal');
+        self.showMenu();
+      });
+    });
+    click('confirmNo', function () { self.closeModal('confirmModal'); });
+    click('confirmYes', function () { self.closeModal('confirmModal'); if (self.confirmFn) self.confirmFn(); });
+
+    $('optSound').addEventListener('change', function (e) {
+      DC.Save.data.settings.sound = e.target.checked; DC.Save.save(); self.applySettings();
+    });
+    $('optShadows').addEventListener('change', function (e) {
+      DC.Save.data.settings.shadows = e.target.checked; DC.Save.save(); self.applySettings();
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (t) {
+      t.addEventListener('click', function () { DC.Audio.click(); self.setTab(t.getAttribute('data-tab')); });
+    });
+
+    // 档次筛选
+    var tf = $('tierFilter');
+    var all = document.createElement('button');
+    all.textContent = '全部'; all.className = 'active'; all.dataset.tier = -1;
+    tf.appendChild(all);
+    DC.TIERS.forEach(function (t) {
+      var b = document.createElement('button');
+      b.textContent = t.name; b.style.color = t.color; b.dataset.tier = t.id;
+      tf.appendChild(b);
+    });
+    tf.addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      DC.Audio.click();
+      self.tierFilter = +b.dataset.tier;
+      Array.prototype.forEach.call(tf.children, function (c) { c.classList.toggle('active', c === b); });
+      self.renderCarGrid();
+    });
+
+    $('carGrid').addEventListener('click', function (e) {
+      var tile = e.target.closest('.car-tile'); if (!tile) return;
+      DC.Audio.click();
+      self.focusCar(+tile.dataset.level);
+    });
+    $('carGrid').addEventListener('dblclick', function (e) {
+      var tile = e.target.closest('.car-tile'); if (!tile) return;
+      self.focusCar(+tile.dataset.level);
+      self.detailAction();
+    });
+    $('modList').addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-mod]'); if (!b) return;
+      self.buyMod(b.dataset.mod);
+    });
+  };
+
+  UI.prototype.applySettings = function () {
+    var s = DC.Save.data.settings;
+    $('optSound').checked = s.sound;
+    $('optShadows').checked = s.shadows;
+    DC.Audio.setEnabled(s.sound);
+    if (DC.setShadows) DC.setShadows(s.shadows);
+  };
+
+  UI.prototype.updateViewShift = function () {
+    if (!DC.setViewShift) return;
+    var wide = window.innerWidth > 820;
+    document.body.classList.toggle('shop-mode', this.screen === 'shop' && wide);
+    var portrait = window.innerWidth < window.innerHeight;
+    this.game.orbitRadius = this.screen === 'shop' ? (wide ? 11 : (portrait ? 14 : 12)) : (portrait ? 14 : 9.5);
+    if (this.screen === 'menu') DC.setViewShift(wide ? 0.2 : 0, wide ? 0.04 : 0.08);
+    else if (this.screen === 'shop') DC.setViewShift(wide ? -0.24 : 0, wide ? 0.05 : 0.31);
+    else DC.setViewShift(0, 0);
+  };
+
+  UI.prototype.hideAll = function () {
+    ['menu', 'shop', 'hud'].forEach(function (id) { $(id).classList.add('hidden'); });
+    $('countdown').classList.add('hidden');
+  };
+
+  UI.prototype.openModal = function (id) { $(id).classList.remove('hidden'); };
+  UI.prototype.closeModal = function (id) { $(id).classList.add('hidden'); };
+  UI.prototype.anyModal = function () {
+    return ['pauseModal', 'overModal', 'settingsModal', 'confirmModal'].some(function (id) { return !$(id).classList.contains('hidden'); });
+  };
+  UI.prototype.confirm = function (title, text, fn) {
+    $('confirmTitle').textContent = title; $('confirmText').textContent = text;
+    this.confirmFn = fn; this.openModal('confirmModal');
+  };
+
+  // ---------- 主菜单 ----------
+  UI.prototype.showMenu = function () {
+    this.hideAll();
+    this.screen = 'menu';
+    var save = DC.Save.data;
+    this.game.enterShowroom(save.selected);
+    $('menu').classList.remove('hidden');
+    this.updateViewShift();
+    this.fillCarCard('menu', save.selected);
+    $('menuBest').textContent = 'Lv' + save.best.level;
+    $('menuCoins').textContent = DC.fmt(save.coins);
+  };
+
+  UI.prototype.fillCarCard = function (prefix, level) {
+    var c = DC.carOf(level);
+    var lv = $(prefix + 'Level');
+    lv.textContent = 'Lv' + level; lv.style.color = c.tier.color;
+    var tier = $(prefix + 'Tier');
+    tier.textContent = c.tier.name; tier.style.color = c.tier.color;
+    $(prefix + 'Name').textContent = c.name;
+    $(prefix + 'Speed').textContent = DC.kmhOf(level);
+    $(prefix + 'Income').textContent = DC.fmtIncome(DC.incomeOf(level));
+  };
+
+  // ---------- 比赛 ----------
+  UI.prototype.startGame = function () {
+    DC.Audio.unlock();
+    DC.requestFullscreen();
+    ['overModal', 'pauseModal', 'settingsModal', 'confirmModal'].forEach(this.closeModal.bind(this));
+    this.hideAll();
+    this.screen = 'hud';
+    $('hud').classList.remove('hidden');
+    this.updateViewShift();
+    $('hudLevel').textContent = '';
+    $('hint').style.opacity = 1;
+    this.hintTimer = 6;
+    this.tailSig = null;
+    $('toasts').innerHTML = '';
+    this.clearFloaters();
+    this.game.startRun();
+    var sl = DC.Save.modLevel('shield');
+    $('hudShield').classList.toggle('hidden', sl <= 0);
+    $('hudShield').querySelector('span').textContent = sl;
+  };
+
+  UI.prototype.pauseGame = function () {
+    if (this.game.state !== 'running' && this.game.state !== 'countdown') return;
+    this.game.pause();
+    this.openModal('pauseModal');
+  };
+  UI.prototype.resumeGame = function () {
+    this.closeModal('pauseModal');
+    this.game.resume();
+  };
+
+  UI.prototype.toast = function (html, color) {
+    var box = $('toasts');
+    var el = document.createElement('div');
+    el.className = 'toast';
+    el.style.color = color || '#fff';
+    el.innerHTML = html;
+    box.appendChild(el);
+    while (box.children.length > 2) box.removeChild(box.firstChild);
+    setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 2300);
+  };
+
+  UI.prototype.floater = function (x, y, z, text, color) {
+    var el = document.createElement('div');
+    el.className = 'floater';
+    el.textContent = text;
+    el.style.color = color || '#fff';
+    $('floaters').appendChild(el);
+    this.floaters.push({ el: el, x: x, y: y, z: z, t: 0 });
+  };
+  UI.prototype.clearFloaters = function () {
+    this.floaters.forEach(function (f) { f.el.remove(); });
+    this.floaters = [];
+  };
+
+  UI.prototype.onGameEvent = function (type, d) {
+    var self = this;
+    if (type === 'count') {
+      var cd = $('countdown');
+      cd.classList.remove('hidden', 'anim');
+      void cd.offsetWidth;
+      cd.textContent = d.n > 0 ? d.n : 'GO!';
+      cd.classList.add('anim');
+      if (d.n === 0) setTimeout(function () { cd.classList.add('hidden'); }, 900);
+    } else if (type === 'eat') {
+      this.floater(d.x, 2.5, d.z, '+Lv' + d.level, DC.tierOf(d.level).color);
+    } else if (type === 'merge') {
+      this.floater(d.x, 3.5, d.z, '合成 Lv' + d.level + '  +' + DC.fmt(d.bonus), DC.tierOf(d.level).color);
+    } else if (type === 'levelup') {
+      var c = DC.carOf(d.level);
+      this.toast('升级！Lv' + d.level + ' ' + c.name + '<small>' + c.tier.name + ' · 极速 ' + DC.kmhOf(d.level) + ' km/h · +' + DC.fmt(d.bonus) + ' 金币</small>', c.tier.color);
+      var ti = DC.themeIndexOf(d.level);
+      if (DC.THEMES[ti].from === d.level) setTimeout(function () { self.toast('进入新场景：' + DC.THEMES[ti].name, '#ffffff'); }, 900);
+    } else if (type === 'legend') {
+      this.toast('传奇合成！+' + DC.fmt(d.bonus), '#3df5ff');
+    } else if (type === 'shield') {
+      this.toast('护盾生效！剩余 ' + d.left + ' 次', '#7fd3ff');
+      $('hudShield').querySelector('span').textContent = d.left;
+    } else if (type === 'over') {
+      this.showGameOver(d.stats, d.records, d.quit);
+    }
+  };
+
+  UI.prototype.showGameOver = function (st, rec, quit) {
+    $('overTitle').textContent = quit ? '本局结束' : '坠入悬崖！';
+    $('overCoins').textContent = '+' + DC.fmt(st.coins);
+    $('overTime').textContent = fmtTime(st.time);
+    $('overLevel').textContent = 'Lv' + st.maxLevel;
+    $('overEaten').textContent = st.eaten;
+    $('overMerges').textContent = st.merges;
+    $('overCar').textContent = '最终座驾：' + DC.carOf(st.maxLevel).name + ' · 钱包 ' + DC.fmt(DC.Save.data.coins);
+    var r = [];
+    if (rec.level) r.push('最高等级'); if (rec.time) r.push('最长时间'); if (rec.coins) r.push('单局金币');
+    $('overRecord').classList.toggle('hidden', r.length === 0);
+    $('overRecord').textContent = '新纪录：' + r.join(' · ');
+    this.openModal('overModal');
+    this.overShownAt = performance.now();
+  };
+
+  UI.prototype.update = function (dt) {
+    var g = this.game;
+    if (this.screen === 'hud' && g.stats) {
+      var h = g.head;
+      var c = DC.carOf(h.level);
+      var lv = $('hudLevel');
+      if (lv.textContent !== 'Lv' + h.level) { lv.textContent = 'Lv' + h.level; lv.style.color = c.tier.color; $('hudName').textContent = c.name; $('hudTier').textContent = c.tier.name; $('hudTier').style.color = c.tier.color; }
+      $('hudSpeed').textContent = Math.round(h.v / DC.speedOf(h.level) * DC.kmhOf(h.level));
+      $('hudCoins').textContent = DC.fmt(g.stats.coins);
+      $('hudIncome').textContent = '+' + DC.fmtIncome(DC.incomeOf(h.level) * g.turbo) + '/秒';
+      $('hudTime').textContent = fmtTime(g.stats.time);
+
+      var sig = g.tail.map(function (t) { return t.level; }).join(',');
+      if (sig !== this.tailSig) {
+        var prev = this.tailSig ? this.tailSig.split(',') : [];
+        this.tailSig = sig;
+        var bar = $('tailBar');
+        bar.innerHTML = '';
+        g.tail.forEach(function (t, i) {
+          var chip = document.createElement('span');
+          chip.className = 'lv-chip' + (prev[i] !== String(t.level) ? ' pop' : '');
+          chip.style.color = DC.tierOf(t.level).color;
+          chip.textContent = 'Lv' + t.level;
+          bar.appendChild(chip);
+        });
+      }
+      if (this.hintTimer > 0 && g.state === 'running') {
+        this.hintTimer -= dt;
+        if (this.hintTimer <= 0) $('hint').style.opacity = 0;
+      }
+    }
+    // 漂浮文字
+    var v = new THREE.Vector3();
+    for (var i = this.floaters.length - 1; i >= 0; i--) {
+      var f = this.floaters[i];
+      f.t += dt;
+      if (f.t > 1.1) { f.el.remove(); this.floaters.splice(i, 1); continue; }
+      v.set(f.x, f.y + f.t * 3, f.z).project(this.camera);
+      f.el.style.left = ((v.x + 1) / 2 * window.innerWidth) + 'px';
+      f.el.style.top = ((1 - v.y) / 2 * window.innerHeight) + 'px';
+      f.el.style.opacity = Math.min(1, (1.1 - f.t) * 3);
+    }
+  };
+
+  // ---------- 商店 ----------
+  UI.prototype.showShop = function (tab) {
+    this.hideAll();
+    this.screen = 'shop';
+    if (this.game.state !== 'menu') this.game.enterShowroom(DC.Save.data.selected);
+    $('shop').classList.remove('hidden');
+    this.updateViewShift();
+    this.focusLevel = this.focusLevel || DC.Save.data.selected;
+    this.setTab(tab || 'cars');
+    this.focusCar(this.focusLevel, true);
+  };
+
+  UI.prototype.setTab = function (tab) {
+    Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (t) { t.classList.toggle('active', t.getAttribute('data-tab') === tab); });
+    $('tabCars').classList.toggle('hidden', tab !== 'cars');
+    $('tabMods').classList.toggle('hidden', tab !== 'mods');
+    this.tab = tab;
+    if (tab === 'cars') this.renderCarGrid(); else this.renderMods();
+    this.refreshWallet();
+  };
+
+  UI.prototype.refreshWallet = function () {
+    $('shopCoins').textContent = DC.fmt(DC.Save.data.coins);
+    $('menuCoins').textContent = DC.fmt(DC.Save.data.coins);
+  };
+
+  UI.prototype.renderCarGrid = function () {
+    var grid = $('carGrid');
+    grid.innerHTML = '';
+    var save = DC.Save.data;
+    var self = this;
+    var lastTier = -1;
+    var pending = [];
+    DC.CARS.forEach(function (c) {
+      if (self.tierFilter >= 0 && c.tier.id !== self.tierFilter) return;
+      if (c.tier.id !== lastTier) {
+        lastTier = c.tier.id;
+        var head = document.createElement('div');
+        head.className = 'tier-head';
+        head.style.color = c.tier.color;
+        head.style.gridColumn = '1 / -1';
+        head.textContent = c.tier.name + '  Lv' + c.tier.from + '-' + c.tier.to;
+        grid.appendChild(head);
+      }
+      var tile = document.createElement('div');
+      tile.className = 'car-tile';
+      tile.dataset.level = c.level;
+      var owned = DC.Save.owns(c.level);
+      if (save.selected === c.level) tile.classList.add('selected');
+      if (self.focusLevel === c.level) tile.classList.add('focus');
+      var price = DC.priceOf(c.level);
+      var priceHtml = owned ? '<div class="t-price own">已拥有</div>'
+        : '<div class="t-price' + (save.coins >= price ? '' : ' no') + '"><span class="coin-icon"></span>' + DC.fmt(price) + '</div>';
+      tile.innerHTML = '<div class="ph"></div><div class="t-lv" style="color:' + c.tier.color + '">Lv' + c.level + '</div>' +
+        '<div class="t-name" title="' + c.name + '">' + c.name + '</div>' + priceHtml;
+      grid.appendChild(tile);
+      pending.push(tile);
+    });
+    // 分批生成缩略图，避免卡顿
+    var token = this.gridToken = {};
+    var step = function () {
+      if (token !== self.gridToken) return;
+      for (var k = 0; k < 6 && pending.length; k++) {
+        var t = pending.shift();
+        var img = new Image();
+        img.alt = '';
+        img.src = DC.carThumb(+t.dataset.level);
+        var ph = t.querySelector('.ph');
+        if (ph) t.replaceChild(img, ph);
+      }
+      if (pending.length) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  };
+
+  UI.prototype.focusCar = function (level, scrollInto) {
+    this.focusLevel = level;
+    this.game.showCar(level);
+    this.fillCarCard('det', level);
+    $('detWidth').textContent = DC.trackWidthOf(level).toFixed(1);
+    var btn = $('btnDetAction');
+    var save = DC.Save.data;
+    var price = DC.priceOf(level);
+    btn.disabled = false;
+    btn.className = 'btn primary big';
+    if (save.selected === level) { btn.textContent = '✓ 当前起步车辆'; btn.disabled = true; }
+    else if (DC.Save.owns(level)) { btn.textContent = '选用此车起步'; }
+    else if (save.coins >= price) { btn.innerHTML = '购买 <span class="coin-icon"></span>' + DC.fmt(price); }
+    else { btn.innerHTML = '金币不足 <span class="coin-icon"></span>' + DC.fmt(price); btn.disabled = true; }
+    Array.prototype.forEach.call(document.querySelectorAll('.car-tile'), function (t) {
+      var on = +t.dataset.level === level;
+      t.classList.toggle('focus', on);
+      if (on && scrollInto) t.scrollIntoView({ block: 'center' });
+    });
+  };
+
+  UI.prototype.detailAction = function () {
+    var level = this.focusLevel;
+    var save = DC.Save.data;
+    if (save.selected === level) return;
+    if (!DC.Save.owns(level)) {
+      var price = DC.priceOf(level);
+      if (save.coins < price) { DC.Audio.deny(); return; }
+      save.coins -= price;
+      save.owned.push(level);
+      DC.Audio.buy();
+      this.toast('购入 ' + DC.carOf(level).name, DC.tierOf(level).color);
+    }
+    save.selected = level;
+    DC.Save.save();
+    this.refreshWallet();
+    this.renderCarGrid();
+    this.focusCar(level);
+  };
+
+  UI.prototype.renderMods = function () {
+    var list = $('modList');
+    list.innerHTML = '';
+    var save = DC.Save.data;
+    DC.MODS.forEach(function (m) {
+      var card = document.createElement('div');
+      card.className = 'mod-card' + (m.locked ? ' locked' : '');
+      if (m.locked) {
+        card.innerHTML = '<div class="mod-icon">' + m.icon + '</div><div><div class="mod-name">' + m.name + '</div><div class="mod-desc">' + m.desc + '</div></div>' +
+          '<button class="btn" disabled>未开放</button>';
+      } else {
+        var lv = DC.Save.modLevel(m.id);
+        var bars = '';
+        for (var i = 0; i < m.max; i++) bars += '<i class="' + (i < lv ? 'on' : '') + '"></i>';
+        var maxed = lv >= m.max;
+        var cost = maxed ? 0 : m.cost(lv);
+        var eff = lv > 0 ? '当前：' + m.effectText(lv) : '未安装';
+        if (!maxed) eff += ' → ' + m.effectText(lv + 1);
+        card.innerHTML = '<div class="mod-icon">' + m.icon + '</div><div><div class="mod-name">' + m.name + '  <small class="muted">' + lv + '/' + m.max + '</small></div>' +
+          '<div class="mod-desc">' + m.desc + '</div><div class="mod-effect">' + eff + '</div><div class="mod-lv">' + bars + '</div></div>' +
+          (maxed ? '<button class="btn good" disabled>已满级</button>'
+            : '<button class="btn ' + (save.coins >= cost ? 'primary' : '') + '" data-mod="' + m.id + '"' + (save.coins >= cost ? '' : ' disabled') + '><span class="coin-icon"></span>' + DC.fmt(cost) + '</button>');
+      }
+      list.appendChild(card);
+    });
+  };
+
+  UI.prototype.buyMod = function (id) {
+    var m = DC.modOf(id);
+    var save = DC.Save.data;
+    var lv = DC.Save.modLevel(id);
+    if (!m || m.locked || lv >= m.max) return;
+    var cost = m.cost(lv);
+    if (save.coins < cost) { DC.Audio.deny(); return; }
+    save.coins -= cost;
+    save.mods[id] = lv + 1;
+    DC.Save.save();
+    DC.Audio.buy();
+    this.toast(m.name + ' 升至 ' + (lv + 1) + ' 级', '#ffb03d');
+    this.renderMods();
+    this.refreshWallet();
+  };
+
+  // ---------- 键盘 ----------
+  // 返回 true 表示按键已被界面处理
+  UI.prototype.onKeyDown = function (e) {
+    var g = this.game;
+    if (e.code === 'Escape' || e.code === 'KeyP') {
+      if (!$('confirmModal').classList.contains('hidden')) { this.closeModal('confirmModal'); return true; }
+      if (!$('settingsModal').classList.contains('hidden')) { this.closeModal('settingsModal'); return true; }
+      if (g.state === 'paused') { this.resumeGame(); return true; }
+      if (this.screen === 'hud' && (g.state === 'running' || g.state === 'countdown')) { this.pauseGame(); return true; }
+      if (this.screen === 'shop' && e.code === 'Escape') { this.showMenu(); return true; }
+      return false;
+    }
+    if (e.code === 'Space' || e.code === 'Enter') {
+      if (e.repeat) return true;
+      if (!$('confirmModal').classList.contains('hidden') || !$('settingsModal').classList.contains('hidden')) return e.code === 'Space';
+      if (this.screen === 'menu') { this.startGame(); return true; }
+      if (g.state === 'paused') { this.resumeGame(); return true; }
+      if (g.state === 'over' && performance.now() - (this.overShownAt || 0) > 600) { this.startGame(); return true; }
+    }
+    return false;
+  };
+
+  DC.UI = UI;
+})(window.DC);

@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d14">
+  <title>漂移挑战 Drift Challenge</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="stage"></div>
+
+  <!-- 比赛 HUD -->
+  <div id="hud" class="hidden">
+    <div class="hud-left">
+      <div class="hud-car">
+        <span id="hudLevel" class="lv-chip">Lv1</span>
+        <div>
+          <div id="hudName" class="hud-name">-</div>
+          <div id="hudTier" class="hud-tier">-</div>
+        </div>
+      </div>
+      <div class="hud-speed"><span id="hudSpeed">0</span><small>km/h</small></div>
+    </div>
+    <div class="hud-center">
+      <div class="hud-coins"><span class="coin-icon"></span><span id="hudCoins">0</span></div>
+      <div class="hud-sub"><span id="hudIncome">+0/s</span> · <span id="hudTime">00:00</span></div>
+    </div>
+    <div class="hud-right">
+      <div id="hudShield" class="hud-shield hidden">🛡️ <span>0</span></div>
+      <button id="btnPause" class="icon-btn" title="暂停 (Esc)">⏸</button>
+    </div>
+    <div id="tailBar" class="tail-bar"></div>
+    <div id="hint" class="hint">按住 <kbd>空格</kbd> 向左漂移 · 松开向右漂移</div>
+  </div>
+
+  <div id="countdown" class="countdown hidden"></div>
+  <div id="toasts"></div>
+  <div id="floaters"></div>
+
+  <!-- 主菜单 -->
+  <div id="menu" class="screen">
+    <div class="menu-top">
+      <div class="wallet"><span class="coin-icon"></span><span id="menuCoins">0</span></div>
+      <button id="btnFullscreen" class="icon-btn" title="全屏">⛶</button>
+    </div>
+    <div class="menu-title">
+      <h1>漂移挑战</h1>
+      <div class="subtitle">DRIFT · CHALLENGE</div>
+    </div>
+    <div class="menu-bottom">
+      <div class="car-card" id="menuCar">
+        <div class="car-card-lv"><span id="menuLevel" class="lv-chip">Lv1</span><span id="menuTier" class="tier-name">-</span></div>
+        <div id="menuName" class="car-card-name">-</div>
+        <div class="car-stats">
+          <div><b id="menuSpeed">0</b><small>极速 km/h</small></div>
+          <div><b id="menuIncome">0</b><small>金币 / 秒</small></div>
+          <div><b id="menuBest">1</b><small>最高等级</small></div>
+        </div>
+      </div>
+      <button id="btnStart" class="btn primary big">开始游戏 <kbd>空格</kbd></button>
+      <div class="menu-row">
+        <button id="btnGarage" class="btn">🚗 车库商店</button>
+        <button id="btnMods" class="btn">🔧 改装</button>
+        <button id="btnSettings" class="btn">⚙️ 设置</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 商店 -->
+  <div id="shop" class="screen hidden">
+    <div class="shop-preview">
+      <div class="shop-top">
+        <button id="btnShopBack" class="btn">← 返回</button>
+        <div class="wallet"><span class="coin-icon"></span><span id="shopCoins">0</span></div>
+      </div>
+      <div class="car-card" id="shopDetail">
+        <div class="car-card-lv"><span id="detLevel" class="lv-chip">Lv1</span><span id="detTier" class="tier-name">-</span></div>
+        <div id="detName" class="car-card-name">-</div>
+        <div class="car-stats">
+          <div><b id="detSpeed">0</b><small>极速 km/h</small></div>
+          <div><b id="detIncome">0</b><small>金币 / 秒</small></div>
+          <div><b id="detWidth">0</b><small>起步赛道宽 m</small></div>
+        </div>
+        <button id="btnDetAction" class="btn primary big">购买</button>
+      </div>
+    </div>
+    <div class="shop-panel">
+      <div class="tabs">
+        <button class="tab active" data-tab="cars">车辆 <small>100</small></button>
+        <button class="tab" data-tab="mods">改装</button>
+      </div>
+      <div id="tabCars" class="tab-body">
+        <div id="tierFilter" class="tier-filter"></div>
+        <div id="carGrid" class="car-grid"></div>
+      </div>
+      <div id="tabMods" class="tab-body hidden">
+        <div id="modList" class="mod-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 暂停 -->
+  <div id="pauseModal" class="modal hidden">
+    <div class="modal-box">
+      <h2>暂停</h2>
+      <button id="btnResume" class="btn primary big">继续 <kbd>Esc</kbd></button>
+      <button id="btnQuit" class="btn">放弃本局，返回主菜单</button>
+      <p class="muted">放弃本局也会结算已获得的金币</p>
+    </div>
+  </div>
+
+  <!-- 结算 -->
+  <div id="overModal" class="modal hidden">
+    <div class="modal-box wide">
+      <h2 id="overTitle">坠入悬崖！</h2>
+      <div class="over-coins"><span class="coin-icon"></span><span id="overCoins">0</span></div>
+      <div id="overRecord" class="record hidden">新纪录！</div>
+      <div class="over-grid">
+        <div><b id="overTime">0</b><small>坚持时间</small></div>
+        <div><b id="overLevel">1</b><small>最高等级</small></div>
+        <div><b id="overEaten">0</b><small>吃到车辆</small></div>
+        <div><b id="overMerges">0</b><small>合成次数</small></div>
+      </div>
+      <div id="overCar" class="muted"></div>
+      <button id="btnRetry" class="btn primary big">再来一局 <kbd>空格</kbd></button>
+      <div class="menu-row">
+        <button id="btnOverShop" class="btn">🚗 车库商店</button>
+        <button id="btnOverMenu" class="btn">主菜单</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 设置 -->
+  <div id="settingsModal" class="modal hidden">
+    <div class="modal-box">
+      <h2>设置</h2>
+      <label class="toggle"><input type="checkbox" id="optSound"> <span>音效</span></label>
+      <label class="toggle"><input type="checkbox" id="optShadows"> <span>实时阴影（关闭可提升流畅度）</span></label>
+      <div class="help">
+        <b>玩法说明</b>
+        <ul>
+          <li>按住空格（手机按住屏幕）车辆向左漂移，松开向右漂移。</li>
+          <li>冲出 Z 字赛道会坠入悬崖，本局结束。</li>
+          <li>撞上路上的车会把它吃进车尾；两辆同级车会自动合成高一级车。</li>
+          <li>车尾合成出与车头同级的车时，车头升级，速度和收益随之提高。</li>
+          <li>坚持越久、等级越高，金币越多。金币可以在车库买更好的起步车和改装。</li>
+        </ul>
+      </div>
+      <button id="btnReset" class="btn danger">重置存档</button>
+      <button id="btnSettingsClose" class="btn primary">完成</button>
+    </div>
+  </div>
+
+  <div id="confirmModal" class="modal hidden">
+    <div class="modal-box">
+      <h2 id="confirmTitle">确认</h2>
+      <p id="confirmText"></p>
+      <div class="menu-row">
+        <button id="confirmNo" class="btn">取消</button>
+        <button id="confirmYes" class="btn danger">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="loading" class="loading">加载中…</div>
+
+  <script src="js/lib/three.min.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/save.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/carModel.js"></script>
+  <script src="js/world.js"></script>
+  <script src="js/track.js"></script>
+  <script src="js/effects.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
