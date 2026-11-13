@@ -60,6 +60,7 @@
     this.placeHeadAtStart();
     this.setHeadMesh(level);
     this.world.resetMountains(0, 0);
+    DC.warmCars(level - 10, level + 3);
   };
 
   Game.prototype.showCar = function (level) {
@@ -82,6 +83,7 @@
     this.placeHeadAtStart();
     this.setHeadMesh(level);
     this.world.resetMountains(0, 0);
+    DC.warmCars(level - 10, level + 3);
     this.shieldLeft = DC.Save.modLevel('shield');
     this.turbo = 1 + DC.Save.modLevel('turbo') * 0.15;
     this.magnet = DC.Save.modLevel('magnet');
@@ -280,6 +282,7 @@
     var h = this.head;
     var oldTheme = DC.themeIndexOf(h.level);
     h.level++;
+    DC.warmCars(h.level - 8, h.level + 3);
     this.stats.maxLevel = Math.max(this.stats.maxLevel, h.level);
     this.setHeadMesh(h.level);
     var bonus = DC.mergeBonusOf(h.level) * 2 * this.turbo;

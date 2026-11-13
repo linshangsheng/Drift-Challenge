@@ -1072,6 +1072,27 @@
     c.userData = Object.assign({}, src.userData, { wheels: [] });
     return c;
   };
+  // 空闲时预先生成车型，避免比赛中首次出现时卡顿
+  var warmQueue = [], warming = false;
+  function warmStep(deadline) {
+    var t0 = performance.now();
+    while (warmQueue.length) {
+      var l = warmQueue.shift();
+      if (!cache[l]) cache[l] = buildCar(l);
+      var left = deadline && deadline.timeRemaining ? deadline.timeRemaining() : 8 - (performance.now() - t0);
+      if (left < 4) break;
+    }
+    if (warmQueue.length) schedule(); else warming = false;
+  }
+  function schedule() {
+    if (window.requestIdleCallback) window.requestIdleCallback(warmStep, { timeout: 300 });
+    else setTimeout(warmStep, 30);
+  }
+  DC.warmCars = function (from, to) {
+    for (var l = Math.max(1, from); l <= Math.min(DC.MAX_LEVEL, to); l++) if (!cache[l] && warmQueue.indexOf(l) < 0) warmQueue.push(l);
+    if (!warming && warmQueue.length) { warming = true; schedule(); }
+  };
+
   DC.carDims = function (level) {
     if (!cache[level]) cache[level] = buildCar(level);
     return cache[level].userData;
