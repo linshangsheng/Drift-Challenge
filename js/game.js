@@ -128,10 +128,38 @@
     this.headDist = 0;
   };
 
+  // 夜间车灯照在路面上的光斑
+  var beamMat = null;
+  function headBeam(L, W) {
+    if (!beamMat) {
+      var cv = document.createElement('canvas');
+      cv.width = 128; cv.height = 256;
+      var x = cv.getContext('2d');
+      var g = x.createRadialGradient(64, 40, 4, 64, 90, 150);
+      g.addColorStop(0, 'rgba(255,245,215,1)'); g.addColorStop(0.45, 'rgba(255,235,190,0.45)'); g.addColorStop(1, 'rgba(255,230,180,0)');
+      x.fillStyle = g; x.fillRect(0, 0, 128, 256);
+      var tex = new T.CanvasTexture(cv);
+      beamMat = new T.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false,
+        polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6 });
+    }
+    var geo = new T.PlaneGeometry(1, 1);
+    geo.rotateX(-Math.PI / 2);
+    geo.rotateY(Math.PI);
+    var m = new T.Mesh(geo, beamMat);
+    m.scale.set(W * 2.6, 1, 13);
+    m.position.set(0, 0.06, L / 2 + 6);
+    m.renderOrder = 2;
+    return m;
+  }
+  Game.prototype.updateBeam = function () {
+    if (beamMat) beamMat.opacity = Math.min(1, this.world.cur.stars) * 0.6;
+  };
+
   Game.prototype.setHeadMesh = function (level) {
     var h = this.head;
     if (h.mesh) this.scene.remove(h.mesh);
     h.mesh = DC.makeCar(level);
+    h.mesh.add(headBeam(h.mesh.userData.length, h.mesh.userData.width));
     h.mesh.position.set(h.x, h.y, h.z);
     h.mesh.rotation.set(0, h.bodyA, 0);
     this.scene.add(h.mesh);
@@ -716,6 +744,7 @@
     this.world.update(dt, this.camera);
     this.track.syncThemeMats(dt);
     this.fx.update(dt);
+    this.updateBeam();
   };
 
   Game.prototype.updateFallingBodies = function (dt) {

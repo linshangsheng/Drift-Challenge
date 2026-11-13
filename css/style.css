@@ -282,6 +282,7 @@ body.shop-mode #toasts { left: 26%; width: 46vw; }
   .hud-center { top: auto; bottom: max(84px, calc(env(safe-area-inset-bottom) + 76px)); }
   .tail-bar { bottom: max(46px, calc(env(safe-area-inset-bottom) + 40px)); }
   .hint { font-size: 12px; }
+  #toasts { top: 24%; }
   .over-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-height: 520px) and (min-width: 821px) {
