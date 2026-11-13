@@ -464,9 +464,23 @@
     }
   }
 
+  // steer: 为前轮单独生成可转动的子模型（玩家车用）
+  var steerMode = false;
   function wheels(B, P, W, S) {
     (P.axles || []).forEach(function (za, i) {
       var x = S ? S.w((za - S.zc) / S.hl) * 0.985 - W.tw / 2 : P.W / 2 - W.tw / 2 - (W.inset || 0.03);
+      if (steerMode && i === 0) {
+        [1, -1].forEach(function (sd) {
+          var sb = new Builder();
+          wheel(sb, W, 0, 0, sd);
+          var g = sb.build();
+          g.traverse(function (o) { if (o.isMesh) o.geometry.translate(0, -W.R, 0); });
+          g.position.set(sd * x, W.R, za);
+          g.name = 'frontWheel';
+          B.extra.push(g);
+        });
+        return;
+      }
       wheel(B, W, x, za, 1);
       wheel(B, W, -x, za, -1);
       if (W.dual && i > 0) { // 后轴双胎
@@ -1065,11 +1079,17 @@
   }
 
   var cache = {};
-  DC.makeCar = function (level) {
-    if (!cache[level]) cache[level] = buildCar(level);
-    var src = cache[level];
+  DC.makeCar = function (level, steerable) {
+    var key = steerable ? 's' + level : level;
+    if (!cache[key]) {
+      steerMode = !!steerable;
+      try { cache[key] = buildCar(level); } finally { steerMode = false; }
+    }
+    var src = cache[key];
     var c = src.clone();
-    c.userData = Object.assign({}, src.userData, { wheels: [] });
+    var fw = [];
+    c.traverse(function (o) { if (o.name === 'frontWheel') fw.push(o); });
+    c.userData = Object.assign({}, src.userData, { wheels: [], frontWheels: fw });
     return c;
   };
   // 空闲时预先生成车型，避免比赛中首次出现时卡顿

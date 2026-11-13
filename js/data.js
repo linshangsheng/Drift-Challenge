@@ -161,7 +161,7 @@ if (window.THREE && THREE.ColorManagement) THREE.ColorManagement.legacyMode = fa
   DC.kmhOf = function (level) { return Math.round(60 + 440 * Math.pow(p(level), 0.9)); };
   DC.toKmh = function (v, level) { return v / DC.speedOf(level) * DC.kmhOf(level); };
   // 加速度（米/秒²）
-  DC.accelOf = function (level) { return 15 + 25 * p(level); };
+  DC.accelOf = function (level) { return 16 + 45 * p(level); };
   // 下压力系数：车速越高轮胎法向载荷越大（高级车空气动力学更强）
   DC.downforceOf = function (level) { var v = DC.speedOf(level); return Math.max(0.04, 1 / 6.5 - 30 / (v * v)); };
   DC.incomeOf = function (level) { return Math.pow(1.1, level - 1); };

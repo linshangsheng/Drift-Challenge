@@ -161,8 +161,10 @@
   };
 
   Track.prototype.makeFeature = function (level, v, w, p) {
-    var pool = [['hill', 30], ['boost', 18], ['slick', 16], ['jump', 22]];
-    if (level >= 6) pool.push(['gap', 14 + 10 * p]);
+    var pool = [['hill', 30], ['boost', 18]];
+    if (level >= 3) pool.push(['jump', 22]);
+    if (level >= 8) pool.push(['gap', 14 + 10 * p]);
+    if (level >= 10) pool.push(['slick', 16]);
     var tot = 0; pool.forEach(function (x) { tot += x[1]; });
     var r = Math.random() * tot, type = pool[0][0];
     for (var i = 0; i < pool.length; i++) { r -= pool[i][1]; if (r <= 0) { type = pool[i][0]; break; } }

@@ -161,7 +161,7 @@
   Game.prototype.setHeadMesh = function (level) {
     var h = this.head;
     if (h.mesh) this.scene.remove(h.mesh);
-    h.mesh = DC.makeCar(level);
+    h.mesh = DC.makeCar(level, true);
     h.mesh.add(headBeam(h.mesh.userData.length, h.mesh.userData.width));
     h.mesh.position.set(h.x, h.y, h.z);
     h.mesh.rotation.set(0, h.bodyA, 0);
@@ -589,7 +589,7 @@
     var boost = this.boostTimer > 0;
     var P = DC.Physics.params({
       top: DC.speedOf(h.level) * (1 + this.engine * 0.03) * (boost ? 1.35 : 1),
-      accel: DC.accelOf(h.level) * (1 + this.engine * 0.1) * (boost ? 1.6 : 1),
+      accel: DC.accelOf(h.level) * (1 + this.engine * 0.1) * (boost ? 1.6 : 1) * (h.heavy ? 0.7 : 1),
       mu: hd.grip, kin: Math.min(0.95, tire.kin * surf.kin),
       D: DC.downforceOf(h.level) * (h.heavy ? 0.85 : 1),
       len: h.mesh ? h.mesh.userData.length : 4.5,
@@ -756,6 +756,13 @@
         var pitch = h.air ? clamp(-h.vy * 0.02, -0.35, 0.35) : clamp(-h.vy * 0.012 - (h.lonA || 0) * 0.002, -0.2, 0.2);
         this.roll = (this.roll || 0) + (clamp((h.latA || 0) * 0.0011, -0.1, 0.1) - (this.roll || 0)) * damp(10, dt);
         h.mesh.rotation.set(pitch, h.bodyA, this.roll, 'YXZ');
+        var fw = h.mesh.userData.frontWheels;
+        if (fw && fw.length && h.ph) {
+          var beta = clamp(wrapAngle(h.velA - h.bodyA), -0.9, 0.9);
+          var tgt = this.state === 'running' && !h.air && h.v > 2 ? clamp(beta * 0.9 + h.ph.r * 0.035, -0.6, 0.6) : 0;
+          this.steerVis = (this.steerVis || 0) + (tgt - (this.steerVis || 0)) * damp(14, dt);
+          for (var wi = 0; wi < fw.length; wi++) fw[wi].rotation.y = this.steerVis;
+        }
       }
       if (h.pop > 0) { h.pop = Math.max(0, h.pop - dt * 2.5); var s2 = 1 + h.pop * 0.35; h.mesh.scale.set(s2, s2, s2); }
       else h.mesh.scale.set(1, 1, 1);
