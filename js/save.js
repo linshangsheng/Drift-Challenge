@@ -13,7 +13,7 @@
       tire: 'stock',
       best: { level: 1, time: 0, coins: 0, eaten: 0 },
       totalRuns: 0,
-      settings: { sound: true, shadows: true, vibrate: true }
+      settings: { sound: true, shadows: true, vibrate: true, guide: true }
     };
   }
 

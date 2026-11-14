@@ -67,6 +67,9 @@
     $('optSound').addEventListener('change', function (e) {
       DC.Save.data.settings.sound = e.target.checked; DC.Save.save(); self.applySettings();
     });
+    $('optGuide').addEventListener('change', function (e) {
+      DC.Save.data.settings.guide = e.target.checked; DC.Save.save();
+    });
     $('optVibrate').addEventListener('change', function (e) {
       DC.Save.data.settings.vibrate = e.target.checked; DC.Save.save();
       if (e.target.checked) DC.vibrate(30);
@@ -122,6 +125,7 @@
     $('optSound').checked = s.sound;
     $('optShadows').checked = s.shadows;
     $('optVibrate').checked = s.vibrate !== false;
+    $('optGuide').checked = s.guide !== false;
     DC.Audio.setEnabled(s.sound);
     if (DC.setShadows) DC.setShadows(s.shadows);
   };

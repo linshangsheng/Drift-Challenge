@@ -51,6 +51,7 @@
 
   Game.prototype.enterShowroom = function (level) {
     this.state = 'menu';
+    if (this.guide) this.guide.visible = false;
     this.clearRun();
     this.head.level = level;
     this.world.setThemeByLevel(level, true);
@@ -556,6 +557,7 @@
 
   Game.prototype.startFall = function () {
     var h = this.head;
+    if (this.guide) this.guide.visible = false;
     this.state = 'falling';
     this.falling = true;
     this.fallTimer = 0;
@@ -626,6 +628,7 @@
     var ph = h.ph, n = 6, sub = dt / n;
     ph.x = h.x; ph.z = h.z;
     for (var i = 0; i < n; i++) DC.Physics.step(ph, P, target, sub);
+    this.updateGuide(P, target);
     var o = ph.out;
     h.x = ph.x; h.z = ph.z;
     h.v = Math.sqrt(ph.vx * ph.vx + ph.vz * ph.vz);
@@ -687,6 +690,53 @@
   };
 
   var SPORTY = { hatch: 1, sedan: 1, muscle: 1, coupe: 1, mid: 1, hyper: 1 };
+
+  // 漂移辅助线：预测“现在转向”后的物理轨迹，落在路面上为绿色，冲出去的部分为红色
+  var GUIDE_N = 36;
+  Game.prototype.ensureGuide = function () {
+    if (this.guide) return;
+    var g = new T.BufferGeometry();
+    g.setAttribute('position', new T.BufferAttribute(new Float32Array(GUIDE_N * 2 * 3), 3).setUsage(T.DynamicDrawUsage));
+    g.setAttribute('color', new T.BufferAttribute(new Float32Array(GUIDE_N * 2 * 4), 4).setUsage(T.DynamicDrawUsage));
+    var idx = [];
+    for (var i = 0; i < GUIDE_N - 1; i++) { var a = i * 2; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+    g.setIndex(idx);
+    g.boundingSphere = new T.Sphere(new T.Vector3(), 1e7);
+    var m = new T.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: T.DoubleSide, toneMapped: false,
+      polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -12 });
+    this.guide = new T.Mesh(g, m);
+    this.guide.frustumCulled = false;
+    this.guide.renderOrder = 3;
+    this.scene.add(this.guide);
+  };
+  Game.prototype.updateGuide = function (P, target) {
+    var on = DC.Save.data.settings.guide !== false && this.state === 'running' && !this.head.air;
+    if (!on) { if (this.guide) this.guide.visible = false; return; }
+    this.ensureGuide();
+    var h = this.head, src = h.ph;
+    var st = { x: src.x, z: src.z, vx: src.vx, vz: src.vz, psi: src.psi, r: src.r, wheel: src.wheel, out: {} };
+    var PP = Object.assign({}, P, { air: false, slopeA: 0 });
+    var alt = target > 0 ? DC.ANGLE_RIGHT : DC.ANGLE_LEFT; // 反方向
+    var pos = this.guide.geometry.attributes.position.array, col = this.guide.geometry.attributes.color.array;
+    var off = false, seg = this.curSeg, hw = 0.32;
+    for (var i = 0; i < GUIDE_N; i++) {
+      if (i > 0) for (var k = 0; k < 4; k++) DC.Physics.step(st, PP, alt, 1 / 100);
+      var sp = Math.sqrt(st.vx * st.vx + st.vz * st.vz) || 1;
+      var nx = st.vz / sp, nz = -st.vx / sp;
+      var gi = this.track.locate(st.x, st.z, seg, 0);
+      if (gi >= 0) seg = gi; else off = true;
+      var gy = 0.06;
+      if (gi >= 0) { var sg = this.track.get(gi); var hh = this.track.heightAt(sg, this.track.localOf(sg, st.x, st.z).along); gy += hh || 0; }
+      pos[i * 6] = st.x + nx * hw; pos[i * 6 + 1] = gy; pos[i * 6 + 2] = st.z + nz * hw;
+      pos[i * 6 + 3] = st.x - nx * hw; pos[i * 6 + 4] = gy; pos[i * 6 + 5] = st.z - nz * hw;
+      var a = 0.85 * (1 - 0.7 * i / GUIDE_N) * Math.min(1, i / 2);
+      var r = off ? 1 : 0.25, gC = off ? 0.22 : 1, b = off ? 0.3 : 0.55;
+      for (var e = 0; e < 2; e++) { var c = (i * 2 + e) * 4; col[c] = r; col[c + 1] = gC; col[c + 2] = b; col[c + 3] = a; }
+    }
+    this.guide.geometry.attributes.position.needsUpdate = true;
+    this.guide.geometry.attributes.color.needsUpdate = true;
+    this.guide.visible = true;
+  };
   // 排气回火火焰
   Game.prototype.backfire = function () {
     var h = this.head, ud = h.mesh.userData, ca = Math.cos(h.bodyA), sa = Math.sin(h.bodyA);
