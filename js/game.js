@@ -208,13 +208,16 @@
 
   Game.prototype.makeTailCar = function (level, x, z, y) {
     var mesh = DC.makeCar(level);
-    var badge = DC.makeBadge(level, 0.7);
+    var badge = DC.makeBadge(level, 0.7 * this.badgeScale());
     badge.position.y = mesh.userData.height + 0.6;
     mesh.add(badge);
     mesh.position.set(x, y || 0, z);
     this.scene.add(mesh);
     return { level: level, mesh: mesh, len: mesh.userData.length, blend: 0, fx: x, fz: z, fy: y || 0, pop: 0.6, falling: false, vy: 0, vx: 0, vz: 0 };
   };
+
+  // 等级越高镜头越远，等级牌相应放大，保证看得清
+  Game.prototype.badgeScale = function () { return 1 + (this.head.level - 1) / 99 * 0.8; };
 
   // 刷车等级
   Game.prototype.spawnLevel = function () {
@@ -248,7 +251,7 @@
     var level = this.spawnLevel();
     var mesh = DC.makeCar(level);
     var dims = mesh.userData;
-    var badge = DC.makeBadge(level, 1);
+    var badge = DC.makeBadge(level, this.badgeScale());
     badge.position.y = dims.height + 0.9;
     mesh.add(badge);
     var latMax = Math.max(0, s.w / 2 - dims.width / 2 - 0.5);
