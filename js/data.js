@@ -116,8 +116,8 @@ if (window.THREE && THREE.ColorManagement) THREE.ColorManagement.legacyMode = fa
     ['法拉利', 'LaFerrari', 'hyper', '#c8102e', '#111111', { fin: false }],
     ['梅赛德斯-AMG', 'ONE', 'hyper', '#9ea4aa', '#111111', { wing: 'big' }],
     ['迈凯伦', 'Senna', 'hyper', '#ff6a00', '#111111', { wing: 'big', fin: false }],
-    ['帕加尼', 'Huayra R', 'hyper', '#2a2d34', '#c8102e', { wing: 'lip' }],
-    ['柯尼塞格', 'Regera', 'hyper', '#ffffff', '#111111', { fin: false }],
+    ['帕加尼', 'Huayra R', 'hyper', '#2a2d34', '#c8102e', { exhaustCenter: true, wing: 'lip' }],
+    ['柯尼塞格', 'Regera', 'hyper', '#ffffff', '#111111', { pillar: '#0c0c0e', roofColor: '#0c0c0e', fin: false }],
     ['法拉利', 'Daytona SP3', 'hyper', '#c8102e', '#111111', { fin: false, tails: 'bar' }],
     // 87-95 顶级超跑
     ['Gordon Murray', 'T.50', 'hyper', '#2f6fb3', '#111111', { fin: false }],
@@ -125,16 +125,16 @@ if (window.THREE && THREE.ColorManagement) THREE.ColorManagement.legacyMode = fa
     ['Rimac', 'Nevera', 'hyper', '#1f3f6b', '#111111', { ev: true, fin: false, tails: 'bar' }],
     ['阿斯顿·马丁', 'Valkyrie', 'hyper', '#0e5a4a', '#c0c0c0', { wing: 'big' }],
     ['迈凯伦', 'Speedtail', 'hyper', '#e6e6e6', '#111111', { sL: 1.12, fin: false }],
-    ['布加迪', 'Divo', 'hyper', '#1a1a1a', '#3fa9f5', { wing: 'wing', stripes: '#3fa9f5' }],
+    ['布加迪', 'Divo', 'hyper', '#1a1a1a', '#3fa9f5', { split: { u: -0.12, color: '#3fa9f5' }, horseshoe: true, noPlate: true, wing: 'wing', stripes: '#3fa9f5' }],
     ['Hennessey', 'Venom F5', 'hyper', '#ff7a00', '#111111', { wing: 'lip' }],
     ['SSC', 'Tuatara', 'hyper', '#c0c0c0', '#111111', {}],
-    ['帕加尼', 'Utopia', 'hyper', '#c9a14a', '#111111', { fin: false, tails: 'round' }],
+    ['帕加尼', 'Utopia', 'hyper', '#c9a14a', '#111111', { exhaustCenter: true, fin: false, tails: 'round' }],
     // 96-100 传奇 Hypercar
-    ['柯尼塞格', 'Jesko', 'hyper', '#f5f5f5', '#ff2a2a', { wing: 'big' }],
-    ['布加迪', 'Chiron Super Sport 300+', 'hyper', '#111111', '#ff8c00', { stripes: '#ff8c00', sL: 1.05, fin: false }],
-    ['布加迪', 'Bolide', 'hyper', '#1450c8', '#e8e8e8', { wing: 'big' }],
-    ['布加迪', 'Tourbillon', 'hyper', '#c7ccd6', '#1a5cff', { fin: false }],
-    ['柯尼塞格', 'Jesko Absolut', 'hyper', '#ffffff', '#ffcc33', { caliper: '#ffcc33' }]
+    ['柯尼塞格', 'Jesko', 'hyper', '#f5f5f5', '#ff2a2a', { pillar: '#0c0c0e', roofColor: '#0c0c0e', wing: 'big' }],
+    ['布加迪', 'Chiron Super Sport 300+', 'hyper', '#111111', '#ff8c00', { split: { u: -0.1, color: '#2b2b2b' }, horseshoe: true, noPlate: true, stripes: '#ff8c00', sL: 1.05, fin: false }],
+    ['布加迪', 'Bolide', 'hyper', '#1450c8', '#e8e8e8', { split: { u: -0.15, color: '#111111' }, horseshoe: true, noPlate: true, wing: 'big' }],
+    ['布加迪', 'Tourbillon', 'hyper', '#c7ccd6', '#1a5cff', { split: { u: -0.1, color: '#1a5cff' }, horseshoe: true, noPlate: true, fin: false }],
+    ['柯尼塞格', 'Jesko Absolut', 'hyper', '#ffffff', '#ffcc33', { pillar: '#0c0c0e', roofColor: '#0c0c0e', caliper: '#ffcc33' }]
   ];
 
   DC.MAX_LEVEL = RAW.length; // 100
