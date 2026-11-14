@@ -235,9 +235,33 @@
     this.spray = new Particles(scene, 420, dotTexture(), false);
     this.sparks = new Particles(scene, 260, dotTexture(), true);
     this.marks = new Marks(scene, 2600);
+    // 冲击波光环（升级、合成时在地面扩散）
+    var cv = document.createElement('canvas'); cv.width = cv.height = 128;
+    var x = cv.getContext('2d'), g = x.createRadialGradient(64, 64, 38, 64, 64, 64);
+    g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.7, 'rgba(255,255,255,0.9)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = g; x.fillRect(0, 0, 128, 128);
+    var tex = new T.CanvasTexture(cv), geo = new T.PlaneGeometry(1, 1);
+    geo.rotateX(-Math.PI / 2);
+    this.rings = [];
+    for (var i = 0; i < 6; i++) {
+      var m = new T.Mesh(geo, new T.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0, depthWrite: false, blending: T.AdditiveBlending,
+        toneMapped: false, polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -10 }));
+      m.visible = false; m.renderOrder = 4;
+      scene.add(m);
+      this.rings.push({ m: m, t: 1, dur: 1, size: 1 });
+    }
+    this.ringNext = 0;
   }
+  Effects.prototype.shockwave = function (x, y, z, color, size, dur) {
+    var r = this.rings[this.ringNext++ % this.rings.length];
+    r.m.material.color.set(color);
+    r.m.position.set(x, y + 0.08, z);
+    r.t = 0; r.dur = dur || 0.6; r.size = size || 14;
+    r.m.visible = true;
+  };
 
   Effects.prototype.clear = function () {
+    this.rings.forEach(function (r) { r.t = r.dur; r.m.visible = false; });
     this.smoke.clear(); this.spray.clear(); this.sparks.clear(); this.marks.clear();
   };
 
@@ -295,6 +319,16 @@
     this.spray.update(dt);
     this.sparks.update(dt);
     this.marks.update(dt);
+    for (var i = 0; i < this.rings.length; i++) {
+      var r = this.rings[i];
+      if (!r.m.visible) continue;
+      r.t += dt;
+      var k = r.t / r.dur;
+      if (k >= 1) { r.m.visible = false; continue; }
+      var s = r.size * (0.15 + 0.85 * (1 - Math.pow(1 - k, 3)));
+      r.m.scale.set(s, 1, s);
+      r.m.material.opacity = 0.85 * (1 - k);
+    }
   };
 
   DC.Effects = Effects;

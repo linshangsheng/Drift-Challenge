@@ -16,7 +16,7 @@
       tutorialDone: false,
       ach: {},
       records: {},
-      settings: { sound: true, music: true, shadows: true, autoQuality: true, vibrate: true, guide: true }
+      settings: { sound: true, music: true, shadows: true, autoQuality: true, vibrate: true, guide: true, camFx: true }
     };
   }
 

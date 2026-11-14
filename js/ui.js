@@ -94,6 +94,9 @@
     $('optGuide').addEventListener('change', function (e) {
       DC.Save.data.settings.guide = e.target.checked; DC.Save.save();
     });
+    $('optCamFx').addEventListener('change', function (e) {
+      DC.Save.data.settings.camFx = e.target.checked; DC.Save.save();
+    });
     $('optVibrate').addEventListener('change', function (e) {
       DC.Save.data.settings.vibrate = e.target.checked; DC.Save.save();
       if (e.target.checked) DC.vibrate(30);
@@ -153,6 +156,7 @@
     $('optSound').checked = s.sound;
     $('optShadows').checked = s.shadows;
     $('optVibrate').checked = s.vibrate !== false;
+    $('optCamFx').checked = s.camFx !== false;
     $('optGuide').checked = s.guide !== false;
     $('optAutoQ').checked = s.autoQuality !== false;
     $('optMusic').checked = s.music !== false;

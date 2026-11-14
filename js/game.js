@@ -306,6 +306,7 @@
           var bonus = DC.mergeBonusOf(nl) * this.turbo;
           this.stats.coins += bonus;
           this.fx.burst(px, py + 1.2, pz, DC.tierOf(nl).color, 26, 9);
+          this.fx.shockwave(px, py, pz, DC.tierOf(nl).color, 11, 0.45);
           DC.Audio.merge(nl);
           this.notify('merge', { level: nl, bonus: bonus, x: px, z: pz, y: py });
           changed = true;
@@ -326,6 +327,7 @@
     var bonus = DC.mergeBonusOf(h.level) * 2 * this.turbo;
     this.stats.coins += bonus;
     this.fx.burst(h.x, h.y + 1.5, h.z, DC.tierOf(h.level).color, 60, 14);
+    this.fx.shockwave(h.x, h.y, h.z, DC.tierOf(h.level).color, 26, 0.7);
     DC.Audio.levelUp();
     this.world.setThemeByLevel(h.level, false);
     if (DC.themeIndexOf(h.level) !== oldTheme) this.track.surface = this.surfaceKey();
@@ -893,6 +895,15 @@
       if (SPORTY[DC.carOf(h.level).type] && Math.random() < 0.75) this.backfire();
     }
     this.wasSliding = sliding;
+    // 氮气加速期间排气管持续喷蓝色火焰
+    if (this.boostTimer > 0 && !DC.carOf(h.level).opts.ev) {
+      var udb = h.mesh.userData, cab = Math.cos(h.bodyA), sab = Math.sin(h.bodyA), bk = -udb.length / 2 - 0.1;
+      for (var bs = -1; bs <= 1; bs += 2) {
+        this.fx.sparks.emit({ x: h.x + sab * bk + cab * bs * udb.width * 0.22, y: h.y + 0.35, z: h.z + cab * bk - sab * bs * udb.width * 0.22,
+          vx: ph.vx * 0.9 - sab * rand(5, 10), vy: rand(-0.3, 0.6), vz: ph.vz * 0.9 - cab * rand(5, 10),
+          s0: rand(0.4, 0.75), s1: 0.05, life: rand(0.08, 0.18), a: 1, r: 0.3, g: rand(0.6, 0.85), b: 1, fadeIn: 0.01 });
+      }
+    }
     this.drift = drift;
     this.tireEffects(dt, o, sliding);
     this.updateCombo(dt);
@@ -1070,6 +1081,7 @@
       DC.Audio.land(impact);
       DC.vibrate(Math.round(20 + impact * 3));
       for (var i = 0; i < 8; i++) this.fx.puff(h.x + rand(-1, 1), h.y + 0.2, h.z + rand(-1, 1), rand(-4, 4), rand(-4, 4), 1.4, this.smokeColor());
+      this.fx.shockwave(h.x, h.y, h.z, this.smokeColor(), 6 + impact * 0.5, 0.4);
       this.notify('land', { air: this.airTime });
     }
   };
@@ -1206,12 +1218,13 @@
     this.camZ += (h.z - this.camZ) * damp(10, dt);
     this.camY += (h.y * 0.7 - this.camY) * damp(3, dt);
     // 漂移时镜头：向滑动方向偏移、轻微侧倾、平滑震动
-    var beta = this.state === 'running' && !h.air ? wrapAngle(h.bodyA - h.velA) : 0;
-    var dr = this.drift || 0;
+    var camFx = DC.Save.data.settings.camFx !== false;
+    var beta = camFx && this.state === 'running' && !h.air ? wrapAngle(h.bodyA - h.velA) : 0;
+    var dr = camFx ? (this.drift || 0) : 0;
     this.camSlide = (this.camSlide || 0) + (clamp(-Math.sin(beta) * 2.2, -1.6, 1.6) - (this.camSlide || 0)) * damp(2.5, dt);
     this.camRoll = (this.camRoll || 0) + (clamp(beta * 0.07, -0.05, 0.05) - (this.camRoll || 0)) * damp(3, dt);
     var shake = 0;
-    if (this.shake > 0) { this.shake -= dt; shake = this.shake * 0.6; }
+    if (this.shake > 0) { this.shake -= dt; shake = camFx ? this.shake * 0.6 : 0; }
     var t = this.time, amp = shake + dr * 0.07;
     var sx = (Math.sin(t * 37.1) * 0.6 + Math.sin(t * 23.7) * 0.4) * amp;
     var sy = (Math.sin(t * 41.3) * 0.5 + Math.sin(t * 19.9) * 0.5) * amp;
