@@ -544,7 +544,8 @@
     for (var i = 0; i < 160; i++) DC.Physics.step(st, PP, n.angle, 1 / 110);
     var lat = this.track.localOf(n, st.x, st.z).lat;
     var k = s.dx * n.dz - s.dz * n.dx;
-    if (lat * k >= -0.3 || remain < -s.w / 2 + 1) { this.autoCorner = n.idx; return n.angle; }
+    // autoBias：测试用的时机误差（米），正值表示转晚了
+    if (lat * k >= -0.3 + (this.autoBias || 0) || remain < -s.w / 2 + 1) { this.autoCorner = n.idx; return n.angle; }
     return s.angle;
   };
 
@@ -1162,7 +1163,7 @@
     }
     var ud = h.mesh ? h.mesh.userData : { length: 4.5 };
     var big = Math.max(1, Math.pow(ud.length / 4.6, 0.45));
-    var back = (14 + sf * 7) * big, up = (12 + sf * 5) * big, ahead = 10 + sf * 10;
+    var back = (14 + sf * 11) * big, up = (12 + sf * 9) * big, ahead = 10 + sf * 14;
     var asp = cam.aspect;
     if (asp < 1.3) {
       var k = Math.pow(Math.min(2.2, 1.3 / asp), 0.75);

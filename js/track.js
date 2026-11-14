@@ -115,7 +115,8 @@
     s.obj.traverse(function (o) { if (o.userData.ownGeo) o.geometry.dispose(); });
   };
 
-  DC.trackWidthOf = function (level) { var p = (level - 1) / 99; return 10.5 + 2.5 * p; };
+  // 赛道随车速加宽，让允许的时机误差不至于随等级缩得太厉害
+  DC.trackWidthOf = function (level) { var p = (level - 1) / 99; return 10.5 + (DC.TRACK_WIDEN || 12) * Math.pow(p, 0.8); };
 
   Track.prototype.reset = function (level, surface) {
     this.clear();
@@ -166,7 +167,7 @@
       var angle = last.angle > 0 ? RIGHT : LEFT;
       // 宽窄变化
       var r = Math.random(), wf;
-      if (r < 0.16) wf = rand(0.68, 0.78);
+      if (r < 0.16) wf = rand(0.74, 0.84);
       else if (r < 0.32) wf = rand(1.25, 1.45);
       else wf = rand(0.9, 1.1);
       var w = Math.max(6.5, baseW * wf);
@@ -179,9 +180,13 @@
         feat = this.makeFeature(level, v, w, p);
         if (feat) len = Math.max(len, feat.minLen);
       }
-      // 避免赛道横向漂得太远
-      var dirX = Math.sin(angle);
-      if (!feat && dirX * last.ex > 0 && Math.abs(last.ex) > 40) len = Math.max(w * 1.9, len * 0.55);
+      // 限制赛道的横向活动范围：向外的路段到边界就截短，放不下的特殊路段取消
+      var dirX = Math.sin(angle), XMAX = 60;
+      var room = (XMAX - last.ex * Math.sign(dirX)) / Math.abs(dirX); // 沿这个方向还能走多远
+      if (len > room) {
+        if (feat && feat.minLen > room) feat = null;
+        len = Math.max(w * 1.9, feat ? feat.minLen : 0, Math.min(len, room));
+      }
       this.addSegment(last.ex, last.ez, angle, len, w, feat, false, last.cum + last.len);
     }
   };

@@ -192,7 +192,7 @@
   World.prototype.placeMountain = function (mesh, cx, cz, initial) {
     var side = Math.random() < 0.5 ? -1 : 1;
     var r = 30 + Math.random() * 70;
-    var x = cx + side * (r + 75 + Math.random() * 320); // 与赛道保持距离
+    var x = side * (r + 150 + Math.random() * 330); // 放在赛道横向活动范围之外
     var z = initial ? cz - 100 + Math.random() * 800 : cz + 550 + Math.random() * 250;
     var h = 50 + Math.random() * 150;
     mesh.position.set(x, -75, z);
@@ -259,7 +259,7 @@
       this.cloudTex.offset.x += (performance.now() * 0.000004);
       for (var i = 0; i < this.mountains.length; i++) {
         var m = this.mountains[i];
-        if (m.position.z < cam.position.z - 120 || Math.abs(m.position.x - cam.position.x) > 520) {
+        if (m.position.z < cam.position.z - 120) {
           this.placeMountain(m, cam.position.x, cam.position.z, false);
         }
       }

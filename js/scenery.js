@@ -282,7 +282,7 @@
     var side = Math.random() < 0.5 ? -1 : 1, x, y, z;
     if (p.far) {
       // 远景地标：放在赛道活动范围之外
-      x = side * rnd(120, 330);
+      x = side * rnd(175, 380);
       y = pv.v.top !== undefined ? pv.v.top : rnd(-10, 25);
       z = initial ? cz + rnd(-80, 620) : cz + rnd(480, 660);
     } else {
