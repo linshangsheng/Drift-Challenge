@@ -134,6 +134,36 @@
 
     this.scenery = new DC.Scenery(scene);
 
+    // 天气：跟随镜头的一团粒子（雪/沙尘/冰晶）和雨丝
+    var WN = 420, wp = new Float32Array(WN * 3);
+    this.wSeed = [];
+    for (var w = 0; w < WN; w++) {
+      wp[w * 3] = (Math.random() - 0.5) * 120; wp[w * 3 + 1] = Math.random() * 45 - 8; wp[w * 3 + 2] = Math.random() * 140 - 30;
+      this.wSeed.push(Math.random());
+    }
+    var wg = new T.BufferGeometry();
+    wg.setAttribute('position', new T.BufferAttribute(wp, 3).setUsage(T.DynamicDrawUsage));
+    wg.boundingSphere = new T.Sphere(new T.Vector3(), 1e7);
+    var fl = document.createElement('canvas'); fl.width = fl.height = 32;
+    var fx2 = fl.getContext('2d'), fg = fx2.createRadialGradient(16, 16, 0, 16, 16, 16);
+    fg.addColorStop(0, 'rgba(255,255,255,1)'); fg.addColorStop(0.5, 'rgba(255,255,255,0.5)'); fg.addColorStop(1, 'rgba(255,255,255,0)');
+    fx2.fillStyle = fg; fx2.fillRect(0, 0, 32, 32);
+    this.flakeMat = new T.PointsMaterial({ map: new T.CanvasTexture(fl), size: 0.5, transparent: true, opacity: 0, depthWrite: false, color: '#ffffff', sizeAttenuation: true });
+    this.flakes = new T.Points(wg, this.flakeMat);
+    this.flakes.frustumCulled = false; this.flakes.renderOrder = 6;
+    scene.add(this.flakes);
+    var RN = 320, rp = new Float32Array(RN * 6);
+    this.rainPos = [];
+    for (var r2 = 0; r2 < RN; r2++) this.rainPos.push((Math.random() - 0.5) * 110, Math.random() * 45 - 8, Math.random() * 130 - 25);
+    var rg = new T.BufferGeometry();
+    rg.setAttribute('position', new T.BufferAttribute(rp, 3).setUsage(T.DynamicDrawUsage));
+    rg.boundingSphere = new T.Sphere(new T.Vector3(), 1e7);
+    this.rainMat = new T.LineBasicMaterial({ color: '#bcd0ff', transparent: true, opacity: 0, depthWrite: false });
+    this.rain = new T.LineSegments(rg, this.rainMat);
+    this.rain.frustumCulled = false; this.rain.renderOrder = 6;
+    scene.add(this.rain);
+    this.weather = { flake: 0, rain: 0 };
+
     // 灯光
     this.hemi = new T.HemisphereLight(this.cur.hemiSky.clone(), this.cur.hemiGround.clone(), th.hemiI);
     scene.add(this.hemi);
@@ -221,6 +251,7 @@
       this.sunSprite.position.set(cam.position.x + 330, cam.position.y + 150 + c.sunSize * 0.2, cam.position.z + 780);
       this.sunSprite.scale.set(c.sunSize, c.sunSize, 1);
       this.scenery.update(cam, this.themeIdx);
+      this.updateWeather(dt, cam);
       // 云海跟随相机，贴图偏移让云保持在世界坐标中
       this.cloud.position.x = cam.position.x;
       this.cloud.position.z = cam.position.z;
@@ -232,6 +263,55 @@
           this.placeMountain(m, cam.position.x, cam.position.z, false);
         }
       }
+    }
+  };
+
+  // 各主题的天气：flake 粒子（颜色、大小、下落与横飘速度）、rain 雨丝强度
+  var WEATHER = [
+    { flake: 0.25, color: '#ffd9b0', size: 0.22, fall: 0.6, wind: 5 },   // 峡谷：浮尘
+    { flake: 0.9, color: '#ffffff', size: 0.55, fall: 5, wind: 3 },      // 雪山：下雪
+    { flake: 0.6, color: '#e9c98e', size: 0.3, fall: 0.8, wind: 16 },    // 沙漠：风沙
+    { flake: 0, color: '#ffffff', size: 0.3, fall: 2, wind: 1, rain: 0.5 }, // 夜城：下雨
+    { flake: 0.7, color: '#bff6ff', size: 0.35, fall: 1.6, wind: 2 }     // 冰原：冰晶
+  ];
+  World.prototype.updateWeather = function (dt, cam) {
+    var W = WEATHER[this.themeIdx], wt = this.weather;
+    var k = Math.min(1, dt * 1.2);
+    wt.flake += (W.flake - wt.flake) * k;
+    wt.rain += ((W.rain || 0) - wt.rain) * k;
+    dt = Math.min(dt, 0.05);
+    var cx = cam.position.x, cy = cam.position.y - 14, cz = cam.position.z;
+    this.flakes.visible = wt.flake > 0.02;
+    if (this.flakes.visible) {
+      this.flakeMat.opacity = wt.flake;
+      this.flakeMat.color.set(W.color);
+      this.flakeMat.size = W.size;
+      var p = this.flakes.geometry.attributes.position.array, t = performance.now() * 0.001;
+      for (var i = 0; i < p.length; i += 3) {
+        var sd = this.wSeed[i / 3];
+        p[i] += (W.wind * (0.6 + sd * 0.8) + Math.sin(t * 1.3 + sd * 20) * 1.2) * dt;
+        p[i + 1] -= W.fall * (0.6 + sd * 0.8) * dt;
+        // 超出镜头周围的范围就绕回另一侧
+        if (p[i] - cx > 60) p[i] -= 120; else if (p[i] - cx < -60) p[i] += 120;
+        if (p[i + 1] - cy < -8) p[i + 1] += 45; else if (p[i + 1] - cy > 37) p[i + 1] -= 45;
+        if (p[i + 2] - cz < -30) p[i + 2] += 140; else if (p[i + 2] - cz > 110) p[i + 2] -= 140;
+      }
+      this.flakes.geometry.attributes.position.needsUpdate = true;
+    }
+    this.rain.visible = wt.rain > 0.02;
+    if (this.rain.visible) {
+      this.rainMat.opacity = wt.rain;
+      var rp = this.rainPos, a = this.rain.geometry.attributes.position.array;
+      for (var j = 0; j < rp.length; j += 3) {
+        rp[j] += 6 * dt; rp[j + 1] -= 48 * dt;
+        if (rp[j] - cx > 55) rp[j] -= 110; else if (rp[j] - cx < -55) rp[j] += 110;
+        if (rp[j + 1] - cy < -8) rp[j + 1] += 45;
+        if (rp[j + 2] - cz < -25) rp[j + 2] += 130; else if (rp[j + 2] - cz > 105) rp[j + 2] -= 130;
+        var o = j * 2;
+        a[o] = rp[j]; a[o + 1] = rp[j + 1]; a[o + 2] = rp[j + 2];
+        a[o + 3] = rp[j] - 0.2; a[o + 4] = rp[j + 1] + 1.6; a[o + 5] = rp[j + 2];
+      }
+      this.rain.geometry.attributes.position.needsUpdate = true;
     }
   };
 
