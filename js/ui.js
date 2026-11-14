@@ -67,6 +67,10 @@
     $('optSound').addEventListener('change', function (e) {
       DC.Save.data.settings.sound = e.target.checked; DC.Save.save(); self.applySettings();
     });
+    $('optVibrate').addEventListener('change', function (e) {
+      DC.Save.data.settings.vibrate = e.target.checked; DC.Save.save();
+      if (e.target.checked) DC.vibrate(30);
+    });
     $('optShadows').addEventListener('change', function (e) {
       DC.Save.data.settings.shadows = e.target.checked; DC.Save.save(); self.applySettings();
     });
@@ -117,6 +121,7 @@
     var s = DC.Save.data.settings;
     $('optSound').checked = s.sound;
     $('optShadows').checked = s.shadows;
+    $('optVibrate').checked = s.vibrate !== false;
     DC.Audio.setEnabled(s.sound);
     if (DC.setShadows) DC.setShadows(s.shadows);
   };
@@ -184,6 +189,8 @@
     this.updateViewShift();
     $('hudLevel').textContent = '';
     this.roadText = '';
+    this.meterBank = 0; this.meterLost = 0;
+    $('driftMeter').classList.add('hidden');
     $('hint').style.opacity = 1;
     this.hintTimer = 6;
     this.tailSig = null;
@@ -257,6 +264,23 @@
       this.floater(this.game.head.x, this.game.head.y + 3, this.game.head.z, '加速！', '#3df5ff');
     } else if (type === 'slick') {
       this.floater(this.game.head.x, this.game.head.y + 3, this.game.head.z, '打滑！', '#c9a8ff');
+    } else if (type === 'comboUp') {
+      var dm = $('driftMeter');
+      dm.classList.remove('pulse'); void dm.offsetWidth; dm.classList.add('pulse');
+      DC.Audio.comboUp(d.mult);
+    } else if (type === 'comboBank') {
+      var grade = d.points > 2500 ? '传奇漂移！' : d.points > 900 ? '超级漂移！' : d.points > 300 ? '漂亮的漂移！' : '漂移';
+      var h2 = this.game.head;
+      this.floater(h2.x, h2.y + 4, h2.z, grade + ' +' + DC.fmt(d.coins), '#ffd34d');
+      DC.Audio.cash(d.points > 900);
+      DC.vibrate(d.points > 900 ? [25, 40, 25, 40, 40] : [20, 30, 20]);
+      this.meterBank = 0.9;
+      $('driftMeter').classList.add('bank');
+    } else if (type === 'comboLost') {
+      DC.Audio.comboLost();
+      this.meterLost = 1.0;
+      $('dmLabel').textContent = '连击中断';
+      $('driftMeter').classList.add('lost');
     } else if (type === 'legend') {
       this.toast('传奇合成！+' + DC.fmt(d.bonus), '#3df5ff');
     } else if (type === 'shield') {
@@ -315,11 +339,13 @@
           bar.appendChild(chip);
         });
       }
+      this.updateMeter(dt);
       if (this.hintTimer > 0 && g.state === 'running') {
         this.hintTimer -= dt;
         if (this.hintTimer <= 0) $('hint').style.opacity = 0;
       }
     }
+    this.updateSpeedLines(dt);
     // 漂浮文字
     var v = new THREE.Vector3();
     for (var i = this.floaters.length - 1; i >= 0; i--) {
@@ -332,6 +358,67 @@
       f.el.style.left = ((v.x + 1) / 2 * window.innerWidth) + 'px';
       f.el.style.top = ((1 - v.y) / 2 * window.innerHeight) + 'px';
       f.el.style.opacity = Math.min(1, (1.1 - f.t) * 3);
+    }
+  };
+
+  // 漂移连击计分表
+  var MULT_COLORS = ['#ffffff', '#ffffff', '#ffe066', '#ffb03d', '#ff6b4a', '#d36bff'];
+  UI.prototype.updateMeter = function (dt) {
+    var g = this.game, c = g.combo, dm = $('driftMeter');
+    if (this.meterBank > 0 || this.meterLost > 0) {
+      this.meterBank = Math.max(0, (this.meterBank || 0) - dt);
+      this.meterLost = Math.max(0, (this.meterLost || 0) - dt);
+      if (this.meterBank <= 0 && this.meterLost <= 0) {
+        dm.classList.add('hidden'); dm.classList.remove('bank', 'lost');
+        $('dmLabel').textContent = '漂移';
+      }
+      if (!(c && c.active && c.drifting)) return;
+      dm.classList.remove('bank', 'lost'); this.meterBank = 0; this.meterLost = 0;
+      $('dmLabel').textContent = '漂移';
+    }
+    if (!c || !c.active) { if (!dm.classList.contains('hidden')) dm.classList.add('hidden'); return; }
+    dm.classList.remove('hidden');
+    dm.style.setProperty('--mc', MULT_COLORS[Math.min(5, c.mult)]);
+    $('dmMult').textContent = '×' + c.mult;
+    $('dmPts').textContent = DC.fmt(c.points);
+    $('dmBar').style.width = Math.min(100, (g.driftAngle || 0) / 60 * 100).toFixed(0) + '%';
+    dm.style.opacity = c.drifting ? 1 : Math.max(0.35, 1 - c.idle / 1.6);
+  };
+
+  // 速度线：高速和加速时从画面中心向外飞出的线条
+  UI.prototype.updateSpeedLines = function (dt) {
+    var cv = $('speedFx');
+    if (!this.slCtx) {
+      this.slCtx = cv.getContext('2d');
+      this.lines = [];
+      for (var i = 0; i < 46; i++) this.lines.push({ a: Math.random() * Math.PI * 2, r: Math.random(), s: 0.6 + Math.random() * 0.8 });
+    }
+    var g = this.game, h = g.head;
+    var on = this.screen === 'hud' && g.state === 'running';
+    var top = DC.speedOf(h.level);
+    var k = on ? Math.max(0, Math.min(1, (h.v / top - 0.8) * 4)) * (0.35 + 0.65 * Math.min(1, top / 60)) : 0;
+    if (g.boostTimer > 0) k = Math.max(k, 1);
+    this.slK = (this.slK || 0) + (k - (this.slK || 0)) * Math.min(1, dt * 4);
+    var W = window.innerWidth, H = window.innerHeight, dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    var x = this.slCtx;
+    x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    x.clearRect(0, 0, W, H);
+    if (this.slK < 0.02) return;
+    var cx = W / 2, cy = H * 0.42, R = Math.hypot(W, H) * 0.6;
+    x.lineCap = 'round';
+    for (var i = 0; i < this.lines.length; i++) {
+      var l = this.lines[i];
+      l.r += dt * l.s * (1.2 + this.slK * 2.2);
+      if (l.r > 1) { l.r = 0.25 + Math.random() * 0.2; l.a = Math.random() * Math.PI * 2; }
+      var r0 = R * l.r, r1 = r0 + R * (0.05 + 0.12 * this.slK) * l.s;
+      var al = this.slK * 0.35 * Math.min(1, (l.r - 0.25) * 4);
+      x.strokeStyle = g.boostTimer > 0 ? 'rgba(160,250,255,' + al + ')' : 'rgba(255,255,255,' + al + ')';
+      x.lineWidth = 1 + l.s * 1.5;
+      x.beginPath();
+      x.moveTo(cx + Math.cos(l.a) * r0, cy + Math.sin(l.a) * r0 * 0.75);
+      x.lineTo(cx + Math.cos(l.a) * r1, cy + Math.sin(l.a) * r1 * 0.75);
+      x.stroke();
     }
   };
 

@@ -215,6 +215,12 @@
       roll.g.gain.setTargetAtTime(o.air ? 0 : sp * 0.055, t, 0.08);
       roll.f.frequency.setTargetAtTime(S.rollF * (0.6 + sp * 0.8), t, 0.1);
     },
+    comboUp: function (mult) { tone(520 * Math.pow(1.19, mult), 0.1, 'triangle', 0.18); tone(780 * Math.pow(1.19, mult), 0.14, 'triangle', 0.14, 0.05); },
+    cash: function (big) {
+      [1318, 1568, 2093].forEach(function (f, i) { tone(f, 0.12, 'square', 0.08, i * 0.06); });
+      if (big) tone(2637, 0.35, 'triangle', 0.12, 0.2);
+    },
+    comboLost: function () { tone(330, 0.25, 'sawtooth', 0.12, 0, 160); },
     pickup: function () { tone(660, 0.12, 'square', 0.15); tone(990, 0.15, 'square', 0.12, 0.06); },
     merge: function (level) {
       var b = 330 * Math.pow(1.02, level);

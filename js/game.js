@@ -96,6 +96,8 @@
     this.spawnTimer = 0;
     this.lastEffect = null;
     this.avgV = 0;
+    this.combo = null;
+    this.sus = null;
     this.snapCamera();
     // 开局先放几辆车
     for (var i = 0; i < 4; i++) this.spawnRoadCar(30 + i * 22 + rand(0, 10));
@@ -547,6 +549,7 @@
     this.shieldLeft--;
     this.fx.burst(h.x, h.y + 1.2, h.z, '#7fd3ff', 50, 10);
     DC.Audio.shield();
+    this.loseCombo();
     this.notify('shield', { left: this.shieldLeft });
     this.fx.endSkid();
   };
@@ -562,11 +565,14 @@
     if (!h.air) h.vy = 1;
     h.spinX = 1.2 + Math.random(); h.spinZ = (Math.random() - 0.5) * 3;
     DC.Audio.fall();
+    DC.vibrate([60, 40, 120]);
+    this.loseCombo();
     this.fx.endSkid();
     this.notify('fall', {});
   };
 
   Game.prototype.finishRun = function (quit) {
+    if (quit) this.bankCombo();
     this.state = 'over';
     var st = this.stats;
     var save = DC.Save.data;
@@ -666,34 +672,118 @@
     var drift = sliding ? clamp(o.slideV / 14, 0.15, 1) : 0;
     this.driftAngle = sliding ? Math.abs(o.beta) * 57.3 : 0;
     if (sliding) this.stats.drift += h.v * dt;
-    this.smokeTimer -= dt;
-    var L = h.mesh.userData.length, W = h.mesh.userData.width;
-    var ca = Math.cos(h.bodyA), sa = Math.sin(h.bodyA);
-    var spin = o.wheelSpin > 3 && !h.air;
-    for (var wI = 0; wI < 2; wI++) {
-      var side = wI ? 1 : -1;
-      var wx = h.x - sa * L * 0.32 + ca * side * W * 0.42;
-      var wz = h.z - ca * L * 0.32 - sa * side * W * 0.42;
-      if (sliding || spin) {
-        this.fx.skid(wI, wx, wz, h.y);
-        if (this.smokeTimer <= 0) this.fx.puff(wx, h.y + 0.3, wz, -ph.vx * 0.08, -ph.vz * 0.08, 0.7 + drift * 1.8, this.smokeColor());
-      } else if (wI === 1) this.fx.endSkid();
-    }
-    if (this.smokeTimer <= 0) this.smokeTimer = sliding ? 0.025 : 0.05;
     this.drift = drift;
+    this.tireEffects(dt, o, sliding);
+    this.updateCombo(dt);
+    this.haptics(dt);
     DC.Audio.update({ speedN: h.v / P.top, wheelN: (h.v + o.wheelSpin) / P.top, slip: h.air ? 0 : o.slipX,
       slideV: h.air ? 0 : o.slideV, surface: this.surfaceKey(), running: true, boost: this.boostTimer > 0, air: h.air });
   };
 
-  Game.prototype.smokeColor = function () {
-    return { asphalt: '#dcdcdc', snow: '#ffffff', sand: '#e2c38e', wet: '#c9d6ff', ice: '#e0fbff' }[this.surfaceKey()];
+  // 各路面的轮胎特效：烟雾/粉尘、飞溅物、胎痕
+  var SURF_FX = {
+    asphalt: { smoke: 1.0, smokeC: '#e6e6e6', smokeS: 1.0, debris: 0, debrisC: '#333333', debrisS: 0.1, markC: '#0b0b0b', markA: 0.55 },
+    snow: { smoke: 0.5, smokeC: '#ffffff', smokeS: 1.25, debris: 1.0, debrisC: '#f4f8ff', debrisS: 0.3, markC: '#7f8ea3', markA: 0.6, up: 4 },
+    sand: { smoke: 0.95, smokeC: '#d6b585', smokeS: 1.45, debris: 0.7, debrisC: '#b48852', debrisS: 0.17, markC: '#6c5031', markA: 0.5, up: 3.5 },
+    wet: { smoke: 0.35, smokeC: '#dbe5ff', smokeS: 1.0, debris: 1.1, debrisC: '#cfe2ff', debrisS: 0.14, markC: '#000000', markA: 0.16, up: 2.5, alpha: 0.65 },
+    ice: { smoke: 0.3, smokeC: '#e8fbff', smokeS: 1.0, debris: 0.6, debrisC: '#effdff', debrisS: 0.1, markC: '#ffffff', markA: 0.42, up: 2 }
+  };
+  Game.prototype.smokeColor = function () { return SURF_FX[this.surfaceKey()].smokeC; };
+
+  Game.prototype.tireEffects = function (dt, o, sliding) {
+    var h = this.head, ph = h.ph, F = SURF_FX[this.surfaceKey()];
+    var L = h.mesh.userData.length, W = h.mesh.userData.width;
+    var ca = Math.cos(h.bodyA), sa = Math.sin(h.bodyA);
+    var it = clamp(o.slideV / 16, 0, 1), spinIt = clamp(o.wheelSpin / 10, 0, 1);
+    var rearOn = !h.air && (sliding || o.wheelSpin > 3);
+    var e = Math.max(sliding ? it : 0, spinIt * 0.8);
+    // 接地点的横向滑动方向，飞溅物顺着它甩出去
+    var w = ph.vx * ca - ph.vz * sa;
+    var acc = this.fxAcc || (this.fxAcc = { s: [0, 0], d: [0, 0] });
+    var light = this.world.cur ? clamp(0.3 + (this.world.cur.sunI + this.world.cur.hemiI) * 0.4, 0.45, 1.1) : 1;
+    this.fx.setLight(light);
+    var tw = 0.22 + W * 0.05;
+    for (var wI = 0; wI < 4; wI++) {
+      var rear = wI < 2, side = wI % 2 ? 1 : -1, key = (rear ? 'r' : 'f') + side;
+      var fwd = rear ? -L * 0.32 : L * 0.3;
+      var wx = h.x + sa * fwd + ca * side * W * 0.42;
+      var wz = h.z + ca * fwd - sa * side * W * 0.42;
+      var on = rear ? rearOn : (!h.air && sliding && Math.abs(o.beta) > 0.3);
+      if (!on) { this.fx.endMark(key); continue; }
+      var alpha = Math.min(0.92, F.markA * 1.3 * (0.5 + 0.5 * e)) * (rear ? 1 : 0.6);
+      this.fx.mark(key, wx, h.y, wz, ca, -sa, tw, F.markC, alpha);
+      if (!rear) continue;
+      acc.s[wI] += F.smoke * e * 60 * dt;
+      acc.d[wI] += F.debris * e * 70 * dt;
+      while (acc.s[wI] >= 1) {
+        acc.s[wI] -= 1;
+        this.fx.puff(wx, h.y + 0.25, wz, ph.vx * 0.22, ph.vz * 0.22, F.smokeS, F.smokeC, e);
+      }
+      var nd = Math.floor(acc.d[wI]);
+      if (nd > 0) {
+        acc.d[wI] -= nd;
+        this.fx.debris(wx, h.y, wz, ph.vx * 0.3 + ca * w * 0.35, ph.vz * 0.3 - sa * w * 0.35, F.debrisC, nd, F.debrisS,
+          { up: F.up || 3, alpha: F.alpha || 0.95, spread: 3 + e * 4 });
+      }
+    }
+    if (!rearOn) for (var q = 0; q < 2; q++) { acc.s[q] = Math.min(acc.s[q], 1); acc.d[q] = Math.min(acc.d[q], 1); }
+  };
+
+  // 漂移连击：漂移角 × 车速 × 时间计分，连续漂移倍率递增，结束后换成金币
+  Game.prototype.updateCombo = function (dt) {
+    var c = this.combo || (this.combo = { active: false, points: 0, mult: 1, idle: 0, drifting: false, cur: 0 });
+    var h = this.head;
+    var now = this.driftAngle > 12 && h.v > 8 && !h.air;
+    if (now) {
+      if (!c.drifting && c.active && c.idle < 1.6) {
+        c.mult = Math.min(5, c.mult + 1);
+        this.notify('comboUp', { mult: c.mult });
+      }
+      c.drifting = true; c.active = true; c.idle = 0;
+      var pts = this.driftAngle * DC.toKmh(h.v, h.level) * dt * 0.012 * c.mult;
+      c.points += pts; c.cur += pts;
+    } else if (c.active) {
+      if (c.drifting) { c.drifting = false; c.cur = 0; }
+      if (!h.air) c.idle += dt;
+      if (c.idle > 1.6) this.bankCombo();
+    }
+  };
+  Game.prototype.bankCombo = function () {
+    var c = this.combo;
+    if (!c || !c.active) return;
+    var coins = Math.round(c.points * DC.incomeOf(this.head.level) * 0.04 * this.turbo);
+    if (coins > 0) {
+      this.stats.coins += coins;
+      this.stats.driftPoints = (this.stats.driftPoints || 0) + c.points;
+      this.notify('comboBank', { points: c.points, mult: c.mult, coins: coins });
+    }
+    this.combo = { active: false, points: 0, mult: 1, idle: 0, drifting: false, cur: 0 };
+  };
+  Game.prototype.loseCombo = function () {
+    if (this.combo && this.combo.active && this.combo.points > 5) this.notify('comboLost', {});
+    this.combo = { active: false, points: 0, mult: 1, idle: 0, drifting: false, cur: 0 };
+  };
+
+  // 手机震动反馈
+  Game.prototype.haptics = function (dt) {
+    if (!navigator.vibrate || DC.Save.data.settings.vibrate === false) return;
+    this.vibT = (this.vibT || 0) - dt;
+    if (this.drift > 0.2 && this.vibT <= 0) {
+      try { navigator.vibrate(Math.round(6 + this.drift * 18)); } catch (e) { /* 忽略 */ }
+      this.vibT = 0.11;
+    }
+  };
+  DC.vibrate = function (p) {
+    if (navigator.vibrate && DC.Save.data.settings.vibrate !== false) { try { navigator.vibrate(p); } catch (e) { /* 忽略 */ } }
   };
 
   Game.prototype.landed = function (impact) {
     var h = this.head;
+    if (this.sus) { this.sus.heaveV -= Math.min(6, impact * 0.35); this.sus.pitchV += Math.min(2, impact * 0.08); }
     if (impact > 6) {
       this.shake = Math.min(0.6, impact * 0.03);
       DC.Audio.land(impact);
+      DC.vibrate(Math.round(20 + impact * 3));
       for (var i = 0; i < 8; i++) this.fx.puff(h.x + rand(-1, 1), h.y + 0.2, h.z + rand(-1, 1), rand(-4, 4), rand(-4, 4), 1.4, this.smokeColor());
       this.notify('land', { air: this.airTime });
     }
@@ -761,9 +851,16 @@
         h.mesh.rotation.z += h.spinZ * dt;
       } else {
         // 车身姿态：加速后蹲、侧向力使车身外倾
-        var pitch = h.air ? clamp(-h.vy * 0.02, -0.35, 0.35) : clamp(-h.vy * 0.012 - (h.lonA || 0) * 0.002, -0.2, 0.2);
-        this.roll = (this.roll || 0) + (clamp((h.latA || 0) * 0.0011, -0.1, 0.1) - (this.roll || 0)) * damp(10, dt);
-        h.mesh.rotation.set(pitch, h.bodyA, this.roll, 'YXZ');
+        // 悬挂弹簧：侧倾、俯仰、落地下沉都有回弹
+        var sus = this.sus || (this.sus = { roll: 0, rollV: 0, pitch: 0, pitchV: 0, heave: 0, heaveV: 0 });
+        var pitchT = h.air ? clamp(-h.vy * 0.02, -0.35, 0.35) : clamp(-h.vy * 0.012 - (h.lonA || 0) * 0.0022, -0.2, 0.2);
+        var rollT = h.air ? 0 : clamp((h.latA || 0) * 0.0012, -0.11, 0.11);
+        var sdt = Math.min(dt, 1 / 30);
+        sus.rollV += ((rollT - sus.roll) * 130 - sus.rollV * 12) * sdt; sus.roll += sus.rollV * sdt;
+        sus.pitchV += ((pitchT - sus.pitch) * 100 - sus.pitchV * 11) * sdt; sus.pitch += sus.pitchV * sdt;
+        sus.heaveV += (-sus.heave * 160 - sus.heaveV * 14) * sdt; sus.heave += sus.heaveV * sdt;
+        h.mesh.position.y = h.y + sus.heave;
+        h.mesh.rotation.set(sus.pitch, h.bodyA, sus.roll, 'YXZ');
         var fw = h.mesh.userData.frontWheels;
         if (fw && fw.length && h.ph) {
           var beta = clamp(wrapAngle(h.velA - h.bodyA), -0.9, 0.9);
@@ -820,12 +917,22 @@
     this.camX += (h.x - this.camX) * damp(2.6, dt);
     this.camZ += (h.z - this.camZ) * damp(10, dt);
     this.camY += (h.y * 0.7 - this.camY) * damp(3, dt);
+    // 漂移时镜头：向滑动方向偏移、轻微侧倾、平滑震动
+    var beta = this.state === 'running' && !h.air ? wrapAngle(h.bodyA - h.velA) : 0;
+    var dr = this.drift || 0;
+    this.camSlide = (this.camSlide || 0) + (clamp(-Math.sin(beta) * 2.2, -1.6, 1.6) - (this.camSlide || 0)) * damp(2.5, dt);
+    this.camRoll = (this.camRoll || 0) + (clamp(beta * 0.07, -0.05, 0.05) - (this.camRoll || 0)) * damp(3, dt);
     var shake = 0;
     if (this.shake > 0) { this.shake -= dt; shake = this.shake * 0.6; }
-    cam.position.set(this.camX + (Math.random() - 0.5) * shake, this.camY + up + (Math.random() - 0.5) * shake, this.camZ - back);
-    this.camLook.set(this.camX * 0.6 + h.x * 0.4, this.camY, this.camZ + ahead);
+    var t = this.time, amp = shake + dr * 0.07;
+    var sx = (Math.sin(t * 37.1) * 0.6 + Math.sin(t * 23.7) * 0.4) * amp;
+    var sy = (Math.sin(t * 41.3) * 0.5 + Math.sin(t * 19.9) * 0.5) * amp;
+    cam.position.set(this.camX + this.camSlide + sx, this.camY + up + sy, this.camZ - back);
+    this.camLook.set(this.camX * 0.6 + h.x * 0.4 + this.camSlide * 0.4, this.camY, this.camZ + ahead);
     cam.lookAt(this.camLook);
-    var fov = 55 + sf * 14 + (this.boostTimer > 0 ? 8 : 0);
+    cam.rotateZ(this.camRoll);
+    this.fovDrift = (this.fovDrift || 0) + (dr * 4 - (this.fovDrift || 0)) * damp(2, dt);
+    var fov = 55 + sf * 14 + (this.boostTimer > 0 ? 8 : 0) + this.fovDrift;
     if (Math.abs(cam.fov - fov) > 0.05) { cam.fov += (fov - cam.fov) * damp(3, dt); cam.updateProjectionMatrix(); }
   };
 
