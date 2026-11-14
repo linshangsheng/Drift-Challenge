@@ -175,7 +175,7 @@ if (window.THREE && THREE.ColorManagement) THREE.ColorManagement.legacyMode = fa
   DC.niceRound = niceRound;
   DC.priceOf = function (level) {
     if (level <= 1) return 0;
-    return niceRound(100 * Math.pow(1.13, level - 2));
+    return niceRound(100 * Math.pow(1.14, level - 2));
   };
 
   DC.CARS = RAW.map(function (r, i) {
