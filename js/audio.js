@@ -262,6 +262,12 @@
     if (!music.timer) music.timer = setInterval(musicTick, 90);
   }
 
+  // 页面切到后台时暂停所有声音，回来时恢复
+  document.addEventListener('visibilitychange', function () {
+    if (!ctx) return;
+    try { if (document.hidden) ctx.suspend(); else ctx.resume(); } catch (e) { /* 忽略 */ }
+  });
+
   DC.Audio = {
     renderTest: renderTest,
     unlock: function () {
