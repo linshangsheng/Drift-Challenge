@@ -49,14 +49,17 @@
   var ui = new DC.UI(game, camera);
 
   // ---------- 输入 ----------
+  // 空格、方向键左、A 键都可以操作
+  var HOLD_KEYS = { Space: 1, ArrowLeft: 1, KeyA: 1 }, keysDown = {};
+  function anyKeyDown() { for (var k in keysDown) if (keysDown[k]) return true; return false; }
   window.addEventListener('keydown', function (e) {
-    if (e.code === 'Space') e.preventDefault();
+    if (HOLD_KEYS[e.code]) e.preventDefault();
     DC.Audio.unlock();
     if (ui.onKeyDown(e)) return;
-    if (e.code === 'Space' && !e.repeat) game.setHolding(true);
+    if (HOLD_KEYS[e.code] && !e.repeat) { keysDown[e.code] = true; game.setHolding(true); }
   });
   window.addEventListener('keyup', function (e) {
-    if (e.code === 'Space') { e.preventDefault(); game.setHolding(false); }
+    if (HOLD_KEYS[e.code]) { e.preventDefault(); keysDown[e.code] = false; if (!anyKeyDown() && pointers === 0) game.setHolding(false); }
   });
 
   // 触屏 / 鼠标：按住屏幕 = 按住空格
@@ -68,13 +71,13 @@
     pointers++;
     game.setHolding(true);
   });
-  function release() { if (pointers > 0) { pointers = Math.max(0, pointers - 1); if (pointers === 0) game.setHolding(false); } }
+  function release() { if (pointers > 0) { pointers = Math.max(0, pointers - 1); if (pointers === 0 && !anyKeyDown()) game.setHolding(false); } }
   window.addEventListener('pointerup', release);
   window.addEventListener('pointercancel', release);
   window.addEventListener('contextmenu', function (e) { e.preventDefault(); });
 
   window.addEventListener('blur', function () {
-    pointers = 0;
+    pointers = 0; keysDown = {};
     game.setHolding(false);
     if (ui.screen === 'hud') ui.pauseGame();
   });
@@ -100,11 +103,46 @@
   }
   window.addEventListener('resize', resize);
 
+  // ---------- 自动画质：持续掉帧时逐级降低分辨率，最后关闭阴影 ----------
+  var baseDpr = Math.min(window.devicePixelRatio || 1, 2);
+  var QUALITY = [
+    { pr: baseDpr, shadows: true },
+    { pr: Math.min(baseDpr, 1.5), shadows: true },
+    { pr: Math.min(baseDpr, 1), shadows: true },
+    { pr: Math.min(baseDpr, 1), shadows: false },
+    { pr: 0.75, shadows: false }
+  ];
+  var qLevel = 0, slowTime = 0, emaDt = 1 / 60;
+  function applyQuality() {
+    var q = QUALITY[qLevel], wantShadows = q.shadows && DC.Save.data.settings.shadows !== false;
+    renderer.setPixelRatio(q.pr);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    if (renderer.shadowMap.enabled !== wantShadows) DC.setShadows(wantShadows);
+  }
+  DC.applyQuality = applyQuality;
+  DC.resetQuality = function () { qLevel = 0; slowTime = 0; applyQuality(); };
+  function watchFps(rawDt) {
+    // 自动化测试环境（软件渲染）不参与自动降画质
+    if (DC.Save.data.settings.autoQuality === false || rawDt > 0.25 || document.hidden || navigator.webdriver) return;
+    emaDt += (rawDt - emaDt) * 0.05;
+    if (emaDt > 1 / 40) slowTime += rawDt; else slowTime = Math.max(0, slowTime - rawDt * 2);
+    if (slowTime > 2.5 && qLevel < QUALITY.length - 1) {
+      // 跳过与当前效果相同的档位
+      var prev = QUALITY[qLevel];
+      do { qLevel++; } while (qLevel < QUALITY.length - 1 && QUALITY[qLevel].pr === prev.pr && QUALITY[qLevel].shadows === prev.shadows);
+      slowTime = 0; emaDt = 1 / 60;
+      applyQuality();
+      if (ui.screen !== 'hud') ui.toast('已自动降低画质以保持流畅', '#9aa3b5');
+    }
+  }
+
   // ---------- 主循环 ----------
   var last = performance.now();
   function frame(now) {
-    var dt = Math.min(0.05, (now - last) / 1000);
+    var raw = (now - last) / 1000;
+    var dt = Math.min(0.05, raw);
     last = now;
+    watchFps(raw);
     game.update(dt);
     ui.update(dt);
     renderer.render(scene, camera);

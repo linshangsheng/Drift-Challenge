@@ -49,6 +49,16 @@
       self.game.finishRun(true);
     });
     click('btnRetry', function () { self.startGame(); });
+    click('btnRestart', function () {
+      self.closeModal('pauseModal');
+      self.game.state = 'running';
+      self.game.bankCombo();
+      // 重新开始前先结算本局已得的金币
+      var st = self.game.stats;
+      if (st) { DC.Save.data.coins += Math.floor(st.coins); DC.Save.save(); }
+      self.startGame();
+    });
+    click('btnPauseSettings', function () { self.openModal('settingsModal'); });
     click('btnOverShop', function () { self.closeModal('overModal'); self.showShop('cars'); });
     click('btnOverSuggest', function () {
       self.closeModal('overModal');
@@ -85,6 +95,10 @@
     $('optVibrate').addEventListener('change', function (e) {
       DC.Save.data.settings.vibrate = e.target.checked; DC.Save.save();
       if (e.target.checked) DC.vibrate(30);
+    });
+    $('optAutoQ').addEventListener('change', function (e) {
+      DC.Save.data.settings.autoQuality = e.target.checked; DC.Save.save();
+      if (!e.target.checked && DC.resetQuality) DC.resetQuality();
     });
     $('optShadows').addEventListener('change', function (e) {
       DC.Save.data.settings.shadows = e.target.checked; DC.Save.save(); self.applySettings();
@@ -138,10 +152,11 @@
     $('optShadows').checked = s.shadows;
     $('optVibrate').checked = s.vibrate !== false;
     $('optGuide').checked = s.guide !== false;
+    $('optAutoQ').checked = s.autoQuality !== false;
     $('optMusic').checked = s.music !== false;
     DC.Audio.setMusicEnabled(s.music !== false);
     DC.Audio.setEnabled(s.sound);
-    if (DC.setShadows) DC.setShadows(s.shadows);
+    if (DC.applyQuality) DC.applyQuality(); else if (DC.setShadows) DC.setShadows(s.shadows);
   };
 
   UI.prototype.updateViewShift = function () {

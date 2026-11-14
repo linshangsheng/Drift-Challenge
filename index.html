@@ -39,7 +39,7 @@
       <div class="dm-bar"><i id="dmBar"></i></div>
     </div>
     <div id="tailBar" class="tail-bar"></div>
-    <div id="hint" class="hint">按住 <kbd>空格</kbd> 向左漂移 · 松开向右漂移</div>
+    <div id="hint" class="hint">按住 <kbd>空格</kbd> / <kbd>←</kbd> / <kbd>A</kbd> 向左漂移 · 松开向右漂移</div>
   </div>
 
   <div id="countdown" class="countdown hidden"></div>
@@ -122,6 +122,10 @@
     <div class="modal-box">
       <h2>暂停</h2>
       <button id="btnResume" class="btn primary big">继续 <kbd>Esc</kbd></button>
+      <div class="menu-row">
+        <button id="btnRestart" class="btn">重新开始</button>
+        <button id="btnPauseSettings" class="btn">⚙️ 设置</button>
+      </div>
       <button id="btnQuit" class="btn">放弃本局，返回主菜单</button>
       <p class="muted">放弃本局也会结算已获得的金币</p>
     </div>
@@ -158,6 +162,7 @@
       <label class="toggle"><input type="checkbox" id="optSound"> <span>音效</span></label>
       <label class="toggle"><input type="checkbox" id="optMusic"> <span>背景音乐</span></label>
       <label class="toggle"><input type="checkbox" id="optShadows"> <span>实时阴影（关闭可提升流畅度）</span></label>
+      <label class="toggle"><input type="checkbox" id="optAutoQ"> <span>自动调节画质（卡顿时降低分辨率）</span></label>
       <label class="toggle"><input type="checkbox" id="optVibrate"> <span>手机震动反馈</span></label>
       <label class="toggle"><input type="checkbox" id="optGuide"> <span>漂移辅助线（显示现在转向后的滑行轨迹）</span></label>
       <div class="help">
