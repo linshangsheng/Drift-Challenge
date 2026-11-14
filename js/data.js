@@ -195,6 +195,7 @@ if (window.THREE && THREE.ColorManagement) THREE.ColorManagement.legacyMode = fa
     if (/^(coupe|mid|hyper)$/.test(c.type)) return 'exotic';
     return 'i4';
   };
+  DC.ENGINE_NAMES = { ev: '⚡ 电动', diesel: '柴油机', v8: 'V8', exotic: '高转自吸/涡轮', i4: '四缸' };
   DC.carOf = function (level) { return DC.CARS[Math.max(1, Math.min(DC.MAX_LEVEL, level)) - 1]; };
 
   // ---------- 路面（随场景变化） ----------

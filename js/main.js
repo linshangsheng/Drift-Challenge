@@ -71,6 +71,28 @@
     if (HOLD_KEYS[e.code]) { e.preventDefault(); keysDown[e.code] = false; if (!anyKeyDown() && pointers === 0) game.setHolding(false); }
   });
 
+  // 主菜单 / 车库：拖动旋转车辆，滚轮或双指缩放
+  var drag = null;
+  function isShowArea(t) {
+    if (ui.screen !== 'menu' && ui.screen !== 'shop') return false;
+    if (ui.anyModal()) return false;
+    if (t === renderer.domElement) return true;
+    return !!(t.closest && (t.closest('#menu') || t.closest('.shop-preview')) && !t.closest('button, .car-card, .wallet, .menu-bottom'));
+  }
+  window.addEventListener('pointerdown', function (e) { if (isShowArea(e.target)) drag = { x: e.clientX, id: e.pointerId }; });
+  window.addEventListener('pointermove', function (e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    game.orbit -= (e.clientX - drag.x) * 0.008;
+    game.orbitHold = 3; // 拖动后暂停自动旋转几秒
+    drag.x = e.clientX;
+  });
+  window.addEventListener('pointerup', function () { drag = null; });
+  window.addEventListener('pointercancel', function () { drag = null; });
+  window.addEventListener('wheel', function (e) {
+    if (!isShowArea(e.target)) return;
+    game.orbitZoom = Math.max(0.6, Math.min(1.7, (game.orbitZoom || 1) * (e.deltaY > 0 ? 1.08 : 0.93)));
+  }, { passive: true });
+
   // 触屏 / 鼠标：按住屏幕 = 按住空格
   var pointers = 0;
   function isPlayArea(t) { return t === renderer.domElement || (t.closest && t.closest('#hud') && !t.closest('button')); }

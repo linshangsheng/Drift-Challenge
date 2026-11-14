@@ -213,7 +213,8 @@
     var lv = $(prefix + 'Level');
     lv.textContent = 'Lv' + level; lv.style.color = c.tier.color;
     var tier = $(prefix + 'Tier');
-    tier.textContent = c.tier.name + ' · ' + c.typeName; tier.style.color = c.tier.color;
+    tier.textContent = (c.tier.name === '传奇 Hypercar' ? c.tier.name : c.tier.name + ' · ' + c.typeName) + ' · ' + DC.ENGINE_NAMES[DC.engineTypeOf(level)];
+    tier.style.color = c.tier.color;
     $(prefix + 'Name').textContent = c.name;
     $(prefix + 'Speed').textContent = DC.kmhOf(level);
     $(prefix + 'Income').textContent = DC.fmtIncome(DC.incomeOf(level));

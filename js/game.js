@@ -1095,14 +1095,14 @@
     DC.updateCarFx(this.time);
 
     if (this.state === 'menu') {
-      this.orbit += dt * 0.25;
+      if (this.orbitHold > 0) this.orbitHold -= dt; else this.orbit += dt * 0.25;
       if (h.mesh) {
         h.mesh.position.set(h.x, 0, h.z);
         h.mesh.rotation.set(0, h.bodyA, 0);
         if (h.pop > 0) { h.pop = Math.max(0, h.pop - dt * 3); var ps = 1 + h.pop * 0.25; h.mesh.scale.set(ps, ps, ps); }
       }
       var ud = h.mesh ? h.mesh.userData : { length: 4.5, height: 1.4 };
-      var r = (this.orbitRadius || 9.5) * Math.max(1, Math.pow(Math.max(ud.length, ud.height * 2.2) / 4.6, 0.85));
+      var r = (this.orbitRadius || 9.5) * (this.orbitZoom || 1) * Math.max(1, Math.pow(Math.max(ud.length, ud.height * 2.2) / 4.6, 0.85));
       this.camera.position.set(h.x + Math.sin(this.orbit) * r, ud.height * 0.9 + r * 0.22, h.z + Math.cos(this.orbit) * r);
       this.camLook.set(h.x, ud.height * 0.45, h.z);
       this.camera.lookAt(this.camLook);
