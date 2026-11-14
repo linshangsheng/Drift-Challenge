@@ -2,6 +2,22 @@
 
 一款基于网页 3D（Three.js）的赛车漂移小游戏。纯前端静态页面，**直接用浏览器打开 `index.html` 即可游玩**，无需安装或启动服务器（Three.js 已内置在 `js/lib/`，离线也能玩）。
 
+## 截图
+
+| | |
+|---|---|
+| ![主菜单](docs/menu.jpg) | ![黄昏峡谷](docs/canyon.jpg) |
+| ![雪山之巅](docs/snow.jpg) | ![沙漠烈日](docs/desert.jpg) |
+| ![霓虹夜城](docs/neon.jpg) | ![极光冰原](docs/ice.jpg) |
+
+100 辆车一览：
+
+![100 辆车](docs/cars.jpg)
+
+## 在线游玩（可选）
+
+游戏是纯静态页面，可以用 GitHub Pages 直接托管：在仓库的 Settings → Pages 里，Source 选 “Deploy from a branch”，分支选 `main`、目录选 `/ (root)`，保存后等一两分钟，就能通过 `https://<用户名>.github.io/Drift-Challenge/` 在电脑和手机上打开。
+
 ## 玩法
 
 - **操作**：按住 `空格`（手机上按住屏幕）往左行驶，松开往右行驶。车头不会转过目标方向（最多转 90°）。

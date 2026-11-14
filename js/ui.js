@@ -594,7 +594,9 @@
       grid.appendChild(tile);
       pending.push(tile);
     });
-    // 分批生成缩略图，避免卡顿
+    // 分批生成缩略图，避免卡顿；从当前选中的车开始向两边生成
+    var fl = this.focusLevel || 1;
+    pending.sort(function (a, b) { return Math.abs(+a.dataset.level - fl) - Math.abs(+b.dataset.level - fl); });
     var token = this.gridToken = {};
     var step = function () {
       if (token !== self.gridToken) return;
