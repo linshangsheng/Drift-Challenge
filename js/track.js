@@ -4,7 +4,7 @@
   var T = THREE;
   var LEFT = Math.PI / 4, RIGHT = -Math.PI / 4;
   DC.ANGLE_LEFT = LEFT; DC.ANGLE_RIGHT = RIGHT;
-  var THICK = 1.6, UVS = 7; // UVS：纹理每 7 米重复一次
+  var THICK = 1.6, UVS = 13; // UVS：纹理每 13 米重复一次
 
   function rand(a, b) { return a + Math.random() * (b - a); }
   function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }

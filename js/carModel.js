@@ -1067,6 +1067,25 @@
     return { L: L, W: W, H: isFire ? (kind === 'aerial' ? bodyTop + 1 : G.roof + 0.2) : bodyTop };
   }
 
+  var _blobGeo = null, _blobMat = null;
+  function blobGeo() {
+    if (!_blobGeo) { _blobGeo = new T.PlaneGeometry(1, 1); _blobGeo.rotateX(-Math.PI / 2); }
+    return _blobGeo;
+  }
+  function blobMat() {
+    if (!_blobMat) {
+      var cv = document.createElement('canvas'); cv.width = cv.height = 64;
+      var x = cv.getContext('2d'), g = x.createRadialGradient(32, 32, 4, 32, 32, 32);
+      g.addColorStop(0, 'rgba(0,0,0,0.75)'); g.addColorStop(0.6, 'rgba(0,0,0,0.45)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+      x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+      _blobMat = new T.MeshBasicMaterial({ map: new T.CanvasTexture(cv), transparent: true, opacity: 0, depthWrite: false,
+        polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -6 });
+      _blobMat.visible = false;
+    }
+    return _blobMat;
+  }
+  DC.setBlobShadows = function (on) { var m = blobMat(); m.visible = on; m.opacity = on ? 0.55 : 0; };
+
   function buildCar(level) {
     var car = DC.carOf(level);
     var B = new Builder(), dims;
@@ -1074,6 +1093,12 @@
     else if (car.type === 'fire' || car.type === 'aerial' || car.type === 'boxvan') dims = buildTruck(B, car);
     else dims = buildPassenger(B, car);
     var g = B.build();
+    // 车底的柔和假阴影：只在关闭实时阴影时显示
+    var blob = new T.Mesh(blobGeo(), blobMat());
+    blob.scale.set(dims.W * 1.25, 1, dims.L * 1.12);
+    blob.position.y = 0.04;
+    blob.renderOrder = 1;
+    g.add(blob);
     g.userData = { level: level, length: dims.L, width: dims.W, height: dims.H, wheels: [] };
     return g;
   }

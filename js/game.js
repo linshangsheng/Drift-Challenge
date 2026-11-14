@@ -168,7 +168,27 @@
     m.renderOrder = 2;
     return m;
   }
+  // 玩家车脚下的光环，方便在车队里认出自己
+  var ringMat = null, ringGeo = null;
+  function headRing(L, W, color) {
+    if (!ringMat) {
+      var cv = document.createElement('canvas'); cv.width = cv.height = 128;
+      var x = cv.getContext('2d');
+      x.strokeStyle = '#ffffff'; x.lineWidth = 9; x.beginPath(); x.arc(64, 64, 54, 0, Math.PI * 2); x.stroke();
+      x.globalAlpha = 0.35; x.lineWidth = 20; x.beginPath(); x.arc(64, 64, 50, 0, Math.PI * 2); x.stroke();
+      ringMat = new T.MeshBasicMaterial({ map: new T.CanvasTexture(cv), transparent: true, opacity: 0.8, depthWrite: false, blending: T.AdditiveBlending,
+        toneMapped: false, polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -10 });
+      ringGeo = new T.PlaneGeometry(1, 1); ringGeo.rotateX(-Math.PI / 2);
+    }
+    ringMat.color.set(color);
+    var m = new T.Mesh(ringGeo, ringMat);
+    m.scale.set(W * 2.1, 1, L * 1.45);
+    m.position.y = 0.05;
+    m.renderOrder = 2;
+    return m;
+  }
   Game.prototype.updateBeam = function () {
+    if (ringMat) ringMat.opacity = this.state === 'menu' ? 0 : 0.55 + Math.sin(this.time * 4) * 0.2;
     if (beamMat) beamMat.opacity = Math.min(1, this.world.cur.stars) * 0.6;
   };
 
@@ -177,6 +197,7 @@
     if (h.mesh) this.scene.remove(h.mesh);
     h.mesh = DC.makeCar(level, true);
     h.mesh.add(headBeam(h.mesh.userData.length, h.mesh.userData.width));
+    h.mesh.add(headRing(h.mesh.userData.length, h.mesh.userData.width, DC.tierOf(level).color));
     h.mesh.position.set(h.x, h.y, h.z);
     h.mesh.rotation.set(0, h.bodyA, 0);
     this.scene.add(h.mesh);
@@ -1065,6 +1086,7 @@
       this.world.update(dt, this.camera);
       this.track.syncThemeMats(dt);
       this.fx.update(dt);
+      this.updateBeam();
       DC.Audio.update(null);
       return;
     }

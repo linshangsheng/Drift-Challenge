@@ -24,6 +24,7 @@
   var game = new DC.Game({ scene: scene, camera: camera, world: world, track: track, effects: effects });
 
   DC.setShadows = function (on) {
+    if (DC.setBlobShadows) DC.setBlobShadows(!on);
     renderer.shadowMap.enabled = on;
     world.sun.castShadow = on;
     scene.traverse(function (o) { if (o.material) { (Array.isArray(o.material) ? o.material : [o.material]).forEach(function (m) { m.needsUpdate = true; }); } });
