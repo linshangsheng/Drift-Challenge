@@ -215,6 +215,21 @@
       roll.g.gain.setTargetAtTime(o.air ? 0 : sp * 0.055, t, 0.08);
       roll.f.frequency.setTargetAtTime(S.rollF * (0.6 + sp * 0.8), t, 0.1);
     },
+    // 排气回火：几声短促的低频爆音
+    backfire: function () {
+      if (!ctx || !enabled) return;
+      var n = 2 + Math.floor(Math.random() * 3);
+      for (var i = 0; i < n; i++) { var w = i * (0.05 + Math.random() * 0.05); noiseBurst(0.07, 1400, 0.35, w, 120); tone(70 + Math.random() * 30, 0.06, 'square', 0.18, w, 40); }
+    },
+    // 起漂瞬间的轮胎啾声
+    chirp: function (k) {
+      if (!ctx || !enabled) return;
+      var t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(1500, t); o.frequency.exponentialRampToValueAtTime(950, t + 0.18);
+      f.type = 'bandpass'; f.frequency.value = 1400; f.Q.value = 4;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.2 * (k || 1), t + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+      o.connect(f); f.connect(g); g.connect(master); o.start(t); o.stop(t + 0.25);
+    },
     comboUp: function (mult) { tone(520 * Math.pow(1.19, mult), 0.1, 'triangle', 0.18); tone(780 * Math.pow(1.19, mult), 0.14, 'triangle', 0.14, 0.05); },
     cash: function (big) {
       [1318, 1568, 2093].forEach(function (f, i) { tone(f, 0.12, 'square', 0.08, i * 0.06); });

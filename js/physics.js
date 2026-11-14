@@ -54,7 +54,10 @@
       if (e >= 0 && psiD > target) psiD = target;
       if (e < 0 && psiD < target) psiD = target;
       var rmax = P.rmaxK * (6 + 0.25 * v);
-      var rd = clamp(wrap(psiD - st.psi) * 22, -rmax, rmax);
+      var errH = wrap(psiD - st.psi), betaNow = wrap(st.psi - chi);
+      // 入弯果断，回正（减小漂移角）时柔和，让出弯更顺滑
+      var gain = errH * betaNow < 0 ? 8 : 22;
+      var rd = clamp(errH * gain, -rmax, rmax);
       var Y = P.yawK * A;
       var ra = clamp((rd - st.r) * 25, -Y, Y);
       st.r += ra * h;

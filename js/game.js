@@ -672,12 +672,34 @@
     var drift = sliding ? clamp(o.slideV / 14, 0.15, 1) : 0;
     this.driftAngle = sliding ? Math.abs(o.beta) * 57.3 : 0;
     if (sliding) this.stats.drift += h.v * dt;
+    // 起漂瞬间：轮胎啾声，性能车排气回火
+    if (sliding && !this.wasSliding && h.v > 10) {
+      if (this.surfaceKey() === 'asphalt' || this.surfaceKey() === 'wet') DC.Audio.chirp(this.surfaceKey() === 'wet' ? 0.5 : 1);
+      if (SPORTY[DC.carOf(h.level).type] && Math.random() < 0.75) this.backfire();
+    }
+    this.wasSliding = sliding;
     this.drift = drift;
     this.tireEffects(dt, o, sliding);
     this.updateCombo(dt);
     this.haptics(dt);
     DC.Audio.update({ speedN: h.v / P.top, wheelN: (h.v + o.wheelSpin) / P.top, slip: h.air ? 0 : o.slipX,
       slideV: h.air ? 0 : o.slideV, surface: this.surfaceKey(), running: true, boost: this.boostTimer > 0, air: h.air });
+  };
+
+  var SPORTY = { hatch: 1, sedan: 1, muscle: 1, coupe: 1, mid: 1, hyper: 1 };
+  // 排气回火火焰
+  Game.prototype.backfire = function () {
+    var h = this.head, ud = h.mesh.userData, ca = Math.cos(h.bodyA), sa = Math.sin(h.bodyA);
+    var back = -ud.length / 2 - 0.1;
+    for (var s2 = -1; s2 <= 1; s2 += 2) {
+      var x = h.x + sa * back + ca * s2 * ud.width * 0.22, z = h.z + ca * back - sa * s2 * ud.width * 0.22;
+      for (var i = 0; i < 7; i++) {
+        this.fx.sparks.emit({ x: x, y: h.y + 0.35, z: z,
+          vx: h.ph.vx * 0.85 - sa * rand(4, 9), vy: rand(-0.5, 1), vz: h.ph.vz * 0.85 - ca * rand(4, 9),
+          s0: rand(0.35, 0.7), s1: 0.05, life: rand(0.08, 0.2), a: 1, r: 1, g: rand(0.35, 0.7), b: 0.08, fadeIn: 0.01 });
+      }
+    }
+    DC.Audio.backfire();
   };
 
   // 各路面的轮胎特效：烟雾/粉尘、飞溅物、胎痕
