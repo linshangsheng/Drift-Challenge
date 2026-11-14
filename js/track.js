@@ -152,6 +152,7 @@
     s.obj = this.buildMesh(s);
     this.group.add(s.obj);
     this.segs.push(s);
+    if (this.onSegment) this.onSegment(s);
     return s;
   };
 

@@ -38,6 +38,9 @@
     this.smokeTimer = 0;
     this.time = 0;
     this.engine = 0;
+    this.items = [];
+    var self = this;
+    this.track.onSegment = function (s) { self.spawnItems(s); };
   }
 
   // ---------- 外部接口 ----------
@@ -101,6 +104,7 @@
     this.combo = null;
     this.sus = null;
     this.timeScale = 1;
+    this.magnetTimer = 0; this.doubleTimer = 0; this.coinChain = 0; this.coinChainT = 0;
     this.coachCorner = -1;
     this.coach = DC.Save.data.tutorialDone ? null : { until: 5, action: null };
     this.snapCamera();
@@ -118,6 +122,7 @@
     this.tail = [];
     this.roadCars.forEach(function (c) { self.scene.remove(c.mesh); });
     this.roadCars = [];
+    this.clearItems();
     this.fx.clear();
     this.hx = []; this.hz = []; this.hy = []; this.hd = []; this.hb = [];
     this.headDist = 0;
@@ -437,7 +442,8 @@
   Game.prototype.updateRoadCars = function (dt) {
     var h = this.head;
     var headLen = h.mesh ? h.mesh.userData.length : 4;
-    var magR = this.magnet > 0 ? 1.5 + this.magnet * 0.8 : 0;
+    var mg = Math.max(this.magnet, this.magnetTimer > 0 ? 5 : 0);
+    var magR = mg > 0 ? 1.5 + mg * 0.8 : 0;
     var prog = this.headProgress();
     // 路上的车始终比玩家稍慢（按玩家平滑后的实际车速）
     this.avgV = (this.avgV || 0) + (h.v - (this.avgV || 0)) * damp(0.8, dt);
@@ -540,6 +546,135 @@
     var k = s.dx * n.dz - s.dz * n.dx;
     if (lat * k >= -0.3 || remain < -s.w / 2 + 1) { this.autoCorner = n.idx; return n.angle; }
     return s.angle;
+  };
+
+  // ---------- 路上的道具：金币、磁铁、护盾、氮气、双倍金币 ----------
+  var POWER = {
+    nitro: { color: '#ff6a3d', icon: '🔥', name: '氮气加速' },
+    magnet: { color: '#ff4d7a', icon: '🧲', name: '磁铁' },
+    shield: { color: '#6fd6ff', icon: '🛡️', name: '护盾 +1' },
+    double: { color: '#ffd34d', icon: '×2', name: '双倍金币' }
+  };
+  var COIN_MAX = 160, itemMtx = new T.Matrix4(), itemQ = new T.Quaternion(), itemS = new T.Vector3(), itemP = new T.Vector3(), yAx = new T.Vector3(0, 1, 0);
+  Game.prototype.ensureItems = function () {
+    if (this.coinMesh) return;
+    var cg = new T.CylinderGeometry(0.6, 0.6, 0.14, 16);
+    cg.rotateX(Math.PI / 2);
+    var cm = new T.MeshStandardMaterial({ color: '#ffcf33', metalness: 0.9, roughness: 0.25, emissive: '#7a5200', emissiveIntensity: 0.6 });
+    this.coinMesh = new T.InstancedMesh(cg, cm, COIN_MAX);
+    this.coinMesh.frustumCulled = false;
+    this.coinMesh.count = 0;
+    this.scene.add(this.coinMesh);
+    this.powerGeo = new T.OctahedronGeometry(0.85, 0);
+    this.powerMats = {};
+    this.powerIcons = {};
+    for (var k in POWER) {
+      this.powerMats[k] = new T.MeshStandardMaterial({ color: POWER[k].color, emissive: POWER[k].color, emissiveIntensity: 0.9, metalness: 0.3, roughness: 0.3, flatShading: true });
+      var cv = document.createElement('canvas'); cv.width = cv.height = 96;
+      var x = cv.getContext('2d');
+      x.font = (k === 'double' ? '900 54px Arial' : '60px serif'); x.textAlign = 'center'; x.textBaseline = 'middle';
+      x.fillStyle = '#ffffff'; x.strokeStyle = 'rgba(0,0,0,0.7)'; x.lineWidth = 6;
+      if (k === 'double') x.strokeText(POWER[k].icon, 48, 52);
+      x.fillText(POWER[k].icon, 48, 52);
+      var tx = new T.CanvasTexture(cv); tx.encoding = T.sRGBEncoding;
+      this.powerIcons[k] = new T.SpriteMaterial({ map: tx, depthTest: false, transparent: true });
+    }
+  };
+  Game.prototype.clearItems = function () {
+    for (var i = 0; i < this.items.length; i++) if (this.items[i].mesh) this.scene.remove(this.items[i].mesh);
+    this.items = [];
+    if (this.coinMesh) this.coinMesh.count = 0;
+  };
+  Game.prototype.spawnItems = function (s) {
+    if (this.state === 'menu' || s.first) return;
+    this.ensureItems();
+    var f = s.feat, self = this;
+    function free(al) { return al > s.w * 0.6 && al < s.len - s.w * 0.6 && !(f && al > f.a - 4 && al < f.end + 4); }
+    function put(type, along, lat) {
+      var h = self.track.heightAt(s, along);
+      if (h === null || !free(along)) return;
+      var p = self.track.pointAt(s.idx, along, lat);
+      var it = { type: type, x: p.x, z: p.z, y: h, seg: s.idx, ph: Math.random() * 6 };
+      if (type !== 'coin') {
+        var g = new T.Group();
+        g.add(new T.Mesh(self.powerGeo, self.powerMats[type]));
+        var sp = new T.Sprite(self.powerIcons[type]); sp.scale.set(1.5, 1.5, 1); sp.position.y = 1.5; sp.renderOrder = 9;
+        g.add(sp);
+        g.position.set(p.x, h + 1.3, p.z);
+        self.scene.add(g);
+        it.mesh = g;
+      }
+      self.items.push(it);
+    }
+    var latMax = s.w / 2 - 1.6;
+    // 一排金币，沿路段略带弧线
+    if (Math.random() < 0.6) {
+      var n = 4 + Math.floor(Math.random() * 5), a0 = rand(s.w * 0.7, Math.max(s.w * 0.8, s.len - s.w * 0.7 - n * 3.6));
+      var l0 = rand(-latMax, latMax), l1 = rand(-latMax, latMax);
+      for (var i = 0; i < n; i++) put('coin', a0 + i * 3.6, l0 + (l1 - l0) * i / n);
+    }
+    // 偶尔出现限时道具
+    if (this.head.level >= 2 && Math.random() < 0.085) {
+      var r = Math.random();
+      put(r < 0.3 ? 'nitro' : r < 0.6 ? 'magnet' : r < 0.85 ? 'double' : 'shield', rand(0.35, 0.65) * s.len, rand(-latMax, latMax));
+    }
+  };
+  Game.prototype.updateItems = function (dt) {
+    if (!this.coinMesh) return;
+    var h = this.head, n = 0, running = this.state === 'running';
+    var W = h.mesh ? h.mesh.userData.width : 2;
+    var pickR = 1.7 + W * 0.5, pullR = this.magnetTimer > 0 ? 13 : (this.magnet > 0 ? 2.5 + this.magnet * 1.2 : 0);
+    if (this.coinChainT > 0) { this.coinChainT -= dt; if (this.coinChainT <= 0) this.coinChain = 0; }
+    for (var i = this.items.length - 1; i >= 0; i--) {
+      var it = this.items[i];
+      if (it.seg < this.track.base) { if (it.mesh) this.scene.remove(it.mesh); this.items.splice(i, 1); continue; }
+      var dx = it.x - h.x, dz = it.z - h.z, d2 = dx * dx + dz * dz;
+      if (running && Math.abs(it.y - h.y) < 3) {
+        if (pullR && it.type === 'coin' && d2 < pullR * pullR && d2 > 0.01) {
+          var d = Math.sqrt(d2), st = Math.min(d, (h.v + 18) * dt);
+          it.x -= dx / d * st; it.z -= dz / d * st; it.y += (h.y - it.y) * Math.min(1, dt * 8);
+          dx = it.x - h.x; dz = it.z - h.z; d2 = dx * dx + dz * dz;
+        }
+        if (d2 < pickR * pickR) {
+          this.pickItem(it);
+          if (it.mesh) this.scene.remove(it.mesh);
+          this.items.splice(i, 1);
+          continue;
+        }
+      }
+      it.ph += dt * 3;
+      if (it.type === 'coin') {
+        if (n < COIN_MAX) {
+          itemMtx.compose(itemP.set(it.x, it.y + 1.0 + Math.sin(it.ph) * 0.12, it.z), itemQ.setFromAxisAngle(yAx, it.ph), itemS.set(1, 1, 1));
+          this.coinMesh.setMatrixAt(n++, itemMtx);
+        }
+      } else {
+        it.mesh.children[0].rotation.y = it.ph * 0.7;
+        it.mesh.position.set(it.x, it.y + 1.3 + Math.sin(it.ph) * 0.2, it.z);
+      }
+    }
+    this.coinMesh.count = n;
+    this.coinMesh.instanceMatrix.needsUpdate = true;
+  };
+  Game.prototype.pickItem = function (it) {
+    var h = this.head;
+    if (it.type === 'coin') {
+      var v = Math.max(1, DC.incomeOf(h.level) * 1.5) * this.turbo * (this.doubleTimer > 0 ? 2 : 1);
+      this.stats.coins += v;
+      this.stats.coinsPicked = (this.stats.coinsPicked || 0) + 1;
+      this.coinChain = Math.min(12, this.coinChain + 1); this.coinChainT = 0.6;
+      DC.Audio.coin(this.coinChain);
+      this.fx.burst(it.x, it.y + 1, it.z, '#ffd34d', 5, 5);
+      return;
+    }
+    if (it.type === 'nitro') { this.boostTimer = 2.6; DC.Audio.boost(); }
+    else if (it.type === 'magnet') this.magnetTimer = 9;
+    else if (it.type === 'double') this.doubleTimer = 12;
+    else if (it.type === 'shield') this.shieldLeft = Math.min(3, this.shieldLeft + 1);
+    DC.Audio.power();
+    DC.vibrate(30);
+    this.fx.burst(it.x, it.y + 1.3, it.z, POWER[it.type].color, 30, 10);
+    this.notify('power', { type: it.type, name: POWER[it.type].name, color: POWER[it.type].color, icon: POWER[it.type].icon, shield: this.shieldLeft });
   };
 
   // 新手引导：前几个弯在该转向的时机进入慢动作并提示
@@ -711,7 +846,9 @@
     this.track.extend(this.curSeg, h.level, 16);
     this.track.prune(this.curSeg);
     this.pushHistory();
-    this.stats.coins += DC.incomeOf(h.level) * this.turbo * dt;
+    if (this.magnetTimer > 0) this.magnetTimer -= dt;
+    if (this.doubleTimer > 0) this.doubleTimer -= dt;
+    this.stats.coins += DC.incomeOf(h.level) * this.turbo * dt * (this.doubleTimer > 0 ? 2 : 1);
 
     // 漂移表现：按轮胎接地点的滑动速度
     var sliding = !h.air && o.slipX > 1;
@@ -866,7 +1003,7 @@
   Game.prototype.bankCombo = function () {
     var c = this.combo;
     if (!c || !c.active) return;
-    var coins = Math.round(c.points * DC.incomeOf(this.head.level) * 0.025 * this.turbo);
+    var coins = Math.round(c.points * DC.incomeOf(this.head.level) * 0.025 * this.turbo * (this.doubleTimer > 0 ? 2 : 1));
     if (coins > 0) {
       this.stats.coins += coins;
       this.stats.driftPoints = (this.stats.driftPoints || 0) + c.points;
@@ -992,6 +1129,7 @@
 
     this.updateTail(dt, this.falling ? this.virtualDist : this.headDist, this.falling ? this.fallDist : undefined);
     this.updateRoadCars(dt);
+    this.updateItems(dt);
     this.updateCamera(dt);
     this.world.followSun(this.falling ? this.camLook.x : h.x, this.falling ? this.camLook.z : h.z);
     this.world.update(dt, this.camera);

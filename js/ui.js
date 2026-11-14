@@ -285,6 +285,9 @@
       this.floater(this.game.head.x, this.game.head.y + 3, this.game.head.z, '加速！', '#3df5ff');
     } else if (type === 'slick') {
       this.floater(this.game.head.x, this.game.head.y + 3, this.game.head.z, '打滑！', '#c9a8ff');
+    } else if (type === 'power') {
+      this.floater(this.game.head.x, this.game.head.y + 4, this.game.head.z, d.icon + ' ' + d.name, d.color);
+      if (d.type === 'shield') { $('hudShield').classList.remove('hidden'); $('hudShield').querySelector('span').textContent = d.shield; }
     } else if (type === 'coach') {
       var co = $('coach');
       if (!d.action) {
@@ -385,6 +388,11 @@
         });
       }
       this.updateMeter(dt);
+      var pw = '';
+      if (g.boostTimer > 0) pw += '<span style="color:#ff8a5c">🔥 ' + g.boostTimer.toFixed(1) + 's</span>';
+      if (g.magnetTimer > 0) pw += '<span style="color:#ff7a9a">🧲 ' + Math.ceil(g.magnetTimer) + 's</span>';
+      if (g.doubleTimer > 0) pw += '<span style="color:#ffd34d">×2 ' + Math.ceil(g.doubleTimer) + 's</span>';
+      if (pw !== this.powerHtml) { this.powerHtml = pw; $('hudPower').innerHTML = pw; }
       if (this.hintTimer > 0 && g.state === 'running') {
         this.hintTimer -= dt;
         if (this.hintTimer <= 0) $('hint').style.opacity = 0;

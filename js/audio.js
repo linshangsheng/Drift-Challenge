@@ -359,6 +359,8 @@
       g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.2 * (k || 1), t + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
       o.connect(f); f.connect(g); g.connect(master); o.start(t); o.stop(t + 0.25);
     },
+    coin: function (chain) { tone(1050 * Math.pow(1.06, chain || 0), 0.09, 'square', 0.07); tone(1575 * Math.pow(1.06, chain || 0), 0.12, 'triangle', 0.08, 0.03); },
+    power: function () { [660, 880, 1320].forEach(function (f, i) { tone(f, 0.16, 'triangle', 0.16, i * 0.07); }); },
     comboUp: function (mult) { tone(520 * Math.pow(1.19, mult), 0.1, 'triangle', 0.18); tone(780 * Math.pow(1.19, mult), 0.14, 'triangle', 0.14, 0.05); },
     cash: function (big) {
       [1318, 1568, 2093].forEach(function (f, i) { tone(f, 0.12, 'square', 0.08, i * 0.06); });
