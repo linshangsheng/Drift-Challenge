@@ -52,7 +52,16 @@
     o1.connect(g1); o2.connect(g2); o3.connect(g3);
     g1.connect(lp); g2.connect(lp); g3.connect(lp); lp.connect(eg); eg.connect(master);
     [o1, o2, o3].forEach(function (o) { o.frequency.value = 50; o.start(); });
-    eng = { o1: o1, o2: o2, o3: o3, lp: lp, g: eg, gear: 1 };
+    // 低频调幅：模拟柴油机的突突声和 V8 的律动
+    var lope = ctx.createOscillator(); lope.type = 'sine'; lope.frequency.value = 12;
+    var lopeG = ctx.createGain(); lopeG.gain.value = 0;
+    lope.connect(lopeG); lopeG.connect(eg.gain); lope.start();
+    // 电机啸叫用的高频噪声
+    var wn = noiseSrc();
+    var wf = ctx.createBiquadFilter(); wf.type = 'bandpass'; wf.frequency.value = 3000; wf.Q.value = 6;
+    var wg = ctx.createGain(); wg.gain.value = 0;
+    wn.connect(wf); wf.connect(wg); wg.connect(eg);
+    eng = { o1: o1, o2: o2, o3: o3, g1: g1, g2: g2, g3: g3, lp: lp, g: eg, gear: 1, lope: lope, lopeG: lopeG, wf: wf, wg: wg, applied: null };
 
     // ---- 轮胎尖啸：两个失谐振荡器，频率被低频噪声扰动（黏滑），并做快速颤动 ----
     var s1 = ctx.createOscillator(); s1.type = 'sawtooth'; s1.frequency.value = 900;
@@ -127,6 +136,16 @@
   }
 
   var curSurf = null;
+  // 各类引擎的音色：w 波形，g 三个振荡器的音量，h 另外两个振荡器相对基频的倍数，
+  // base/range 基频与转速范围，lp 低通滤波，lope 低频调幅深度与频率，whine 电机啸叫
+  var ENGINES = {
+    i4: { w: ['sawtooth', 'square', 'sawtooth'], g: [0.6, 0.35, 0.2], h: [0.5, 1.5], base: 38, range: 150, gears: 5, lp: [350, 1700], vol: 1, lope: 0, lopeF: 12, whine: 0 },
+    v8: { w: ['sawtooth', 'square', 'triangle'], g: [0.65, 0.6, 0.2], h: [0.5, 0.75], base: 29, range: 100, gears: 5, lp: [260, 1250], vol: 1.0, lope: 0.28, lopeF: 9, whine: 0 },
+    exotic: { w: ['sawtooth', 'sawtooth', 'sawtooth'], g: [0.5, 0.25, 0.42], h: [0.5, 2.0], base: 55, range: 240, gears: 6, lp: [520, 2900], vol: 1.55, lope: 0, lopeF: 12, whine: 0 },
+    diesel: { w: ['square', 'square', 'sawtooth'], g: [0.55, 0.55, 0.12], h: [0.5, 1.5], base: 24, range: 62, gears: 4, lp: [200, 750], vol: 0.95, lope: 0.5, lopeF: 13, whine: 0 },
+    ev: { w: ['sine', 'sine', 'triangle'], g: [0.5, 0.25, 0.2], h: [2.0, 3.0], base: 160, range: 760, gears: 1, lp: [2500, 5000], vol: 0.6, lope: 0, lopeF: 12, whine: 0.035 }
+  };
+  var engType = 'i4';
 
   // 测试用：离线渲染某种工况的声音并返回各频段能量
   function renderTest(o, sec) {
@@ -251,6 +270,7 @@
       return ok;
     },
     setMusicMode: setMusicMode,
+    setEngine: function (type) { engType = ENGINES[type] ? type : 'i4'; },
     setMusicEnabled: function (on) { music.on = on; setMusicMode(music.mode); },
     setEnabled: function (on) {
       enabled = on;
@@ -269,19 +289,35 @@
       }
       var sp = Math.max(0, Math.min(1.5, o.speedN || 0));
       var wn = Math.max(0, Math.min(1.8, o.wheelN || sp));
-      // 5 挡变速：每挡内转速上升，换挡回落
-      var gears = 5, pos = wn * gears * 0.92;
-      var gear = Math.min(gears, Math.floor(pos) + 1);
-      if (gear < eng.gear && pos > eng.gear - 1.15) gear = eng.gear; // 降挡迟滞
-      eng.gear = gear;
-      var inGear = Math.max(0, Math.min(1.25, pos - (gear - 1)));
-      var rpm = 0.28 + 0.62 * inGear + (o.air ? 0.15 : 0);
-      var base = 38 + rpm * 150;
+      var E = ENGINES[engType] || ENGINES.i4;
+      if (eng.applied !== engType) {
+        eng.applied = engType;
+        eng.o1.type = E.w[0]; eng.o2.type = E.w[1]; eng.o3.type = E.w[2];
+        eng.g1.gain.setTargetAtTime(E.g[0], t, 0.05); eng.g2.gain.setTargetAtTime(E.g[1], t, 0.05); eng.g3.gain.setTargetAtTime(E.g[2], t, 0.05);
+      }
+      var rpm;
+      if (E.gears <= 1) {
+        rpm = Math.min(1.3, wn); // 电机：没有挡位，转速直接跟车速
+      } else {
+        // 变速箱：每挡内转速上升，换挡回落
+        var pos = wn * E.gears * 0.92;
+        var gear = Math.min(E.gears, Math.floor(pos) + 1);
+        if (gear < eng.gear && pos > eng.gear - 1.15) gear = eng.gear; // 降挡迟滞
+        eng.gear = gear;
+        var inGear = Math.max(0, Math.min(1.25, pos - (gear - 1)));
+        rpm = 0.28 + 0.62 * inGear + (o.air ? 0.15 : 0);
+      }
+      var base = E.base + rpm * E.range;
       eng.o1.frequency.setTargetAtTime(base, t, 0.04);
-      eng.o2.frequency.setTargetAtTime(base * 0.5, t, 0.04);
-      eng.o3.frequency.setTargetAtTime(base * 1.5, t, 0.04);
-      eng.lp.frequency.setTargetAtTime(350 + rpm * 1700 + (o.boost ? 600 : 0), t, 0.06);
-      eng.g.gain.setTargetAtTime(0.06 + rpm * 0.06 + (o.boost ? 0.03 : 0), t, 0.08);
+      eng.o2.frequency.setTargetAtTime(base * E.h[0], t, 0.04);
+      eng.o3.frequency.setTargetAtTime(base * E.h[1], t, 0.04);
+      eng.lp.frequency.setTargetAtTime(E.lp[0] + rpm * E.lp[1] + (o.boost ? 600 : 0), t, 0.06);
+      var ev = (0.06 + rpm * 0.06 + (o.boost ? 0.03 : 0)) * E.vol;
+      eng.g.gain.setTargetAtTime(ev, t, 0.08);
+      eng.lope.frequency.setTargetAtTime(E.lopeF * (0.6 + rpm), t, 0.1);
+      eng.lopeG.gain.setTargetAtTime(ev * E.lope, t, 0.1);
+      eng.wf.frequency.setTargetAtTime(1500 + rpm * 4500, t, 0.05);
+      eng.wg.gain.setTargetAtTime(E.whine * (0.3 + rpm), t, 0.08);
 
       var S = SURF_SOUND[o.surface] || SURF_SOUND.asphalt;
       if (curSurf !== o.surface) {

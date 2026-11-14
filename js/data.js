@@ -26,8 +26,8 @@ if (window.THREE && THREE.ColorManagement) THREE.ColorManagement.legacyMode = fa
   // ---------- 100 辆车（从低到高）：[品牌, 车型, 车身类型, 主色, 辅色, 选项] ----------
   var RAW = [
     // 1-10 入门代步车
-    ['五菱', '宏光 MINI EV', 'micro', '#f3b5c4', '#ffffff', { roofColor: '#ffffff', sL: 0.95 }],
-    ['奇瑞', 'QQ 冰淇淋', 'micro', '#9ed9c4', '#ffffff', { roofColor: '#ffffff', lights: 'round' }],
+    ['五菱', '宏光 MINI EV', 'micro', '#f3b5c4', '#ffffff', { ev: true, roofColor: '#ffffff', sL: 0.95 }],
+    ['奇瑞', 'QQ 冰淇淋', 'micro', '#9ed9c4', '#ffffff', { ev: true, roofColor: '#ffffff', lights: 'round' }],
     ['Smart', 'ForTwo', 'micro', '#f2c318', '#1a1a1a', { roofColor: '#1a1a1a', pillar: '#1a1a1a', sL: 0.84, lights: 'round' }],
     ['长安', '奔奔', 'hatch', '#e6e8eb', '#333333', { sL: 0.86, rims: 'steel' }],
     ['五菱', '宏光 面包车', 'microvan', '#f4f4f4', '#c0392b', {}],
@@ -46,10 +46,10 @@ if (window.THREE && THREE.ColorManagement) THREE.ColorManagement.legacyMode = fa
     ['本田', 'CR-V', 'suv', '#b8bec6', '#333333', {}],
     ['大众', '途观', 'suv', '#2f4a6e', '#cccccc', { grilleChrome: true }],
     ['别克', 'GL8 商务车', 'mpv', '#1d1d1f', '#cccccc', { grilleChrome: true, sL: 1.03 }],
-    ['比亚迪', '汉', 'sedan', '#0f3b5f', '#cccccc', { sL: 1.05, tails: 'bar', grilleChrome: true }],
-    ['特斯拉', 'Model 3', 'sedan', '#e8e8ea', '#111111', { grilleW: 0.05, grilleH: 0.02, ghOverride: { gR: -0.72, rR: -0.4 }, rims: 'turbine', roofColor: '#151a20' }],
-    ['理想', 'L9', 'suv', '#5b6068', '#111111', { sL: 1.1, sH: 1.03, tails: 'bar', lights: 'slim' }],
-    ['小米', 'SU7', 'sedan', '#7fb8d9', '#111111', { sH: 0.93, tails: 'bar', lights: 'slim', ghOverride: { gR: -0.78, rR: -0.36 }, caliper: '#f0c419', rims: 'multi' }],
+    ['比亚迪', '汉', 'sedan', '#0f3b5f', '#cccccc', { ev: true, sL: 1.05, tails: 'bar', grilleChrome: true }],
+    ['特斯拉', 'Model 3', 'sedan', '#e8e8ea', '#111111', { ev: true, grilleW: 0.05, grilleH: 0.02, ghOverride: { gR: -0.72, rR: -0.4 }, rims: 'turbine', roofColor: '#151a20' }],
+    ['理想', 'L9', 'suv', '#5b6068', '#111111', { ev: true, sL: 1.1, sH: 1.03, tails: 'bar', lights: 'slim' }],
+    ['小米', 'SU7', 'sedan', '#7fb8d9', '#111111', { ev: true, sH: 0.93, tails: 'bar', lights: 'slim', ghOverride: { gR: -0.78, rR: -0.36 }, caliper: '#f0c419', rims: 'multi' }],
     // 23-34 城市特种车
     ['江铃', '全顺 厢式货车', 'boxvan', '#ffffff', '#ff7a00', { decal: 'cargo' }],
     ['福特', 'F-150 皮卡', 'pickup', '#a3262a', '#cccccc', { grilleChrome: true }],
@@ -69,7 +69,7 @@ if (window.THREE && THREE.ColorManagement) THREE.ColorManagement.legacyMode = fa
     ['路虎', '卫士', 'offroad', '#5a6b4f', '#f0f0f0', { roofColor: '#f0f0f0', sL: 1.05, lights: 'round', tails: 'round' }],
     ['福特', 'F-150 猛禽', 'pickup', '#2b6cb0', '#111111', { sW: 1.04 }],
     ['奔驰', 'G63 AMG', 'offroad', '#1b1b1b', '#cccccc', { sL: 1.06, exhaust: 2, rims: 'multi' }],
-    ['GMC', '悍马 EV', 'pickup', '#e8e8e8', '#111111', { sW: 1.06, lights: 'slim', tails: 'bar' }],
+    ['GMC', '悍马 EV', 'pickup', '#e8e8e8', '#111111', { ev: true, sW: 1.06, lights: 'slim', tails: 'bar' }],
     ['保时捷', 'Cayenne Turbo GT', 'suv', '#4b4f54', '#111111', { sH: 0.93, rims: 'multi', caliper: '#d9a400', exhaust: 2, lights: 'slim', tails: 'bar' }],
     ['宝马', 'X5 M', 'suv', '#123b75', '#111111', { sH: 0.97, exhaust: 4, caliper: '#1846b8' }],
     ['劳斯莱斯', '库里南', 'suv', '#2a2a2e', '#c9c9c9', { roofColor: '#c9c9c9', grilleChrome: true, grilleW: 0.7, grilleH: 0.42, sL: 1.12, sH: 1.05, rims: 'multi' }],
@@ -91,8 +91,8 @@ if (window.THREE && THREE.ColorManagement) THREE.ColorManagement.legacyMode = fa
     ['奥迪', 'R8 V10', 'mid', '#9aa0a6', '#111111', { caliper: '#cc0000' }],
     // 59-72 高性能跑车
     ['宾利', 'Continental GT', 'coupe', '#163a2d', '#cccccc', { sL: 1.06, grilleChrome: true, grilleW: 0.62, grilleH: 0.3, lights: 'round', rims: 'multi' }],
-    ['特斯拉', 'Model S Plaid', 'sedan', '#b30f1f', '#111111', { sL: 1.05, grilleW: 0.05, grilleH: 0.02, ghOverride: { gR: -0.82, rR: -0.38 }, rims: 'turbine', exhaust: 0 }],
-    ['保时捷', 'Taycan Turbo S', 'sedan', '#4a7fb5', '#111111', { sH: 0.9, tails: 'bar', lights: 'slim', ghOverride: { gR: -0.8, rR: -0.36 }, exhaust: 0, caliper: '#d9a400' }],
+    ['特斯拉', 'Model S Plaid', 'sedan', '#b30f1f', '#111111', { ev: true, sL: 1.05, grilleW: 0.05, grilleH: 0.02, ghOverride: { gR: -0.82, rR: -0.38 }, rims: 'turbine', exhaust: 0 }],
+    ['保时捷', 'Taycan Turbo S', 'sedan', '#4a7fb5', '#111111', { ev: true, sH: 0.9, tails: 'bar', lights: 'slim', ghOverride: { gR: -0.8, rR: -0.36 }, exhaust: 0, caliper: '#d9a400' }],
     ['梅赛德斯-AMG', 'GT Black Series', 'coupe', '#e86f00', '#111111', { wing: 'big', splitter: true, intake: true, caliper: '#d9a400' }],
     ['阿斯顿·马丁', 'DBS Superleggera', 'coupe', '#3c4a52', '#111111', { sL: 1.04, grilleW: 0.75, grilleH: 0.28, rims: 'y' }],
     ['法拉利', 'Roma', 'coupe', '#7f8f9a', '#111111', { caliper: '#d9a400' }],
@@ -121,8 +121,8 @@ if (window.THREE && THREE.ColorManagement) THREE.ColorManagement.legacyMode = fa
     ['法拉利', 'Daytona SP3', 'hyper', '#c8102e', '#111111', { fin: false, tails: 'bar' }],
     // 87-95 顶级超跑
     ['Gordon Murray', 'T.50', 'hyper', '#2f6fb3', '#111111', { fin: false }],
-    ['路特斯', 'Evija', 'hyper', '#d8dde2', '#ffcc00', {}],
-    ['Rimac', 'Nevera', 'hyper', '#1f3f6b', '#111111', { fin: false, tails: 'bar' }],
+    ['路特斯', 'Evija', 'hyper', '#d8dde2', '#ffcc00', { ev: true }],
+    ['Rimac', 'Nevera', 'hyper', '#1f3f6b', '#111111', { ev: true, fin: false, tails: 'bar' }],
     ['阿斯顿·马丁', 'Valkyrie', 'hyper', '#0e5a4a', '#c0c0c0', { wing: 'big' }],
     ['迈凯伦', 'Speedtail', 'hyper', '#e6e6e6', '#111111', { sL: 1.12, fin: false }],
     ['布加迪', 'Divo', 'hyper', '#1a1a1a', '#3fa9f5', { wing: 'wing', stripes: '#3fa9f5' }],
@@ -186,6 +186,15 @@ if (window.THREE && THREE.ColorManagement) THREE.ColorManagement.legacyMode = fa
       tier: tierOf(level)
     };
   });
+  // 引擎类型（决定引擎声）：电动 / 柴油 / V8 / 高转跑车 / 普通四缸
+  DC.engineTypeOf = function (level) {
+    var c = DC.CARS[Math.max(1, Math.min(DC.MAX_LEVEL, level)) - 1];
+    if (c.opts.ev) return 'ev';
+    if (/^(bus|dbus|schoolbus|fire|aerial|boxvan|microvan)$/.test(c.type)) return 'diesel';
+    if (/^(muscle|pickup|offroad)$/.test(c.type)) return 'v8';
+    if (/^(coupe|mid|hyper)$/.test(c.type)) return 'exotic';
+    return 'i4';
+  };
   DC.carOf = function (level) { return DC.CARS[Math.max(1, Math.min(DC.MAX_LEVEL, level)) - 1]; };
 
   // ---------- 路面（随场景变化） ----------

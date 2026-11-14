@@ -177,6 +177,7 @@
     this.scene.add(h.mesh);
     h.pop = 1;
     h.heavy = !!HEAVY[DC.carOf(level).type];
+    DC.Audio.setEngine(DC.engineTypeOf(level));
   };
 
   Game.prototype.makeTailCar = function (level, x, z, y) {
