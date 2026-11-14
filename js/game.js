@@ -866,7 +866,7 @@
   Game.prototype.bankCombo = function () {
     var c = this.combo;
     if (!c || !c.active) return;
-    var coins = Math.round(c.points * DC.incomeOf(this.head.level) * 0.04 * this.turbo);
+    var coins = Math.round(c.points * DC.incomeOf(this.head.level) * 0.025 * this.turbo);
     if (coins > 0) {
       this.stats.coins += coins;
       this.stats.driftPoints = (this.stats.driftPoints || 0) + c.points;
@@ -875,6 +875,7 @@
     this.combo = { active: false, points: 0, mult: 1, idle: 0, drifting: false, cur: 0 };
   };
   Game.prototype.loseCombo = function () {
+    if (this.combo && this.combo.active && this.stats) this.stats.driftPoints = (this.stats.driftPoints || 0) + this.combo.points;
     if (this.combo && this.combo.active && this.combo.points > 5) this.notify('comboLost', {});
     this.combo = { active: false, points: 0, mult: 1, idle: 0, drifting: false, cur: 0 };
   };

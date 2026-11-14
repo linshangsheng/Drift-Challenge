@@ -50,6 +50,11 @@
     });
     click('btnRetry', function () { self.startGame(); });
     click('btnOverShop', function () { self.closeModal('overModal'); self.showShop('cars'); });
+    click('btnOverSuggest', function () {
+      self.closeModal('overModal');
+      if (self.suggestLevel) { self.focusLevel = self.suggestLevel; self.tierFilter = -1; }
+      self.showShop('cars');
+    });
     click('btnOverMenu', function () { self.closeModal('overModal'); self.showMenu(); });
     click('btnDetAction', function () { self.detailAction(); });
     click('btnReset', function () {
@@ -326,7 +331,19 @@
     $('overEaten').textContent = st.eaten;
     $('overMerges').textContent = st.merges;
     $('overJumps').textContent = st.jumps || 0;
-    $('overDrift').textContent = DC.fmt(st.drift || 0);
+    $('overDrift').textContent = DC.fmt(st.driftPoints || 0);
+    // 购车建议：买得起的最高级新车，或者距离下一辆还差多少
+    var save = DC.Save.data, best = 0, next = 0;
+    for (var lv = DC.MAX_LEVEL; lv > save.selected; lv--) {
+      if (DC.Save.owns(lv)) continue;
+      if (DC.priceOf(lv) <= save.coins) { best = lv; break; }
+    }
+    if (!best) for (var nl = save.selected + 1; nl <= DC.MAX_LEVEL; nl++) if (!DC.Save.owns(nl)) { next = nl; break; }
+    var sg = $('btnOverSuggest');
+    this.suggestLevel = best || next;
+    if (best) { sg.textContent = '💡 金币够买 Lv' + best + ' ' + DC.carOf(best).name + ' 了，去看看'; sg.className = 'btn good'; }
+    else if (next) { sg.textContent = '再攒 ' + DC.fmt(DC.priceOf(next) - save.coins) + ' 金币可买 Lv' + next + ' ' + DC.carOf(next).name; sg.className = 'btn'; }
+    else sg.className = 'btn hidden';
     $('overCar').textContent = '最终座驾：' + DC.carOf(st.maxLevel).name + ' · 钱包 ' + DC.fmt(DC.Save.data.coins);
     var r = [];
     if (rec.level) r.push('最高等级'); if (rec.time) r.push('最长时间'); if (rec.coins) r.push('单局金币');
