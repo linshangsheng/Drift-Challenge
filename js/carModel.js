@@ -297,9 +297,13 @@
     (P.axles || []).forEach(function (za) {
       var u = (za - S.zc) / S.hl;
       var top = Math.min(S.y1(u) - 0.1, P.wR + ar);
-      var ymid = (top + P.wR * 0.4) / 2, wmin = 99;
+      // 内衬下沿不低于轮拱两侧的车身底边，避免从保险杠下面露出来
+      var uf = clamp((za + ar * 1.1 - S.zc) / S.hl, -1, 1), ur = clamp((za - ar * 1.1 - S.zc) / S.hl, -1, 1);
+      var bot = Math.max(P.wR * 0.4, S.y0(uf) + 0.04, S.y0(ur) + 0.04);
+      if (top - bot < 0.1) return;
+      var ymid = (top + bot) / 2, wmin = 99;
       for (var k = -4; k <= 4; k++) wmin = Math.min(wmin, S.sideX(clamp((za + ar * k / 4 - S.zc) / S.hl, -1, 1), ymid));
-      box(B, 'matte', '#0d0d0f', Math.max(0.2, wmin * 2 - 0.06), top - P.wR * 0.4, ar * 2 - 0.04, 0, ymid, za);
+      box(B, 'matte', '#0d0d0f', Math.max(0.2, wmin * 2 - 0.06), top - bot, ar * 2 - 0.04, 0, ymid, za);
     });
   }
 
@@ -494,14 +498,26 @@
   // 车头/车尾表面在 x 处的切线角，用于让灯组贴合曲面
   function frontAngle(S, x) { var d = 0.02; return Math.atan2(S.frontZ(x + d) - S.frontZ(x - d), 2 * d); }
   function rearAngle(S, x) { var d = 0.02; return Math.atan2(S.rearZ(x + d) - S.rearZ(x - d), 2 * d); }
+  // 车身在高度 y 处比最宽处窄多少（截面是超椭圆，越靠上下越窄）
+  function narrowAt(S, u, y) {
+    var w = S.w(u);
+    return w > 1e-4 ? Math.max(0.35, S.sideX(u, y) / w) : 1;
+  }
+  // 换算成“最宽处轮廓”上的等效横向位置，这样贴合点落在该高度的真实表面上
+  function effX(S, x, y, u) {
+    var lim = S.w(u * 0.5) * 0.97;
+    return clamp(x / narrowAt(S, u, y), -lim, lim);
+  }
   function flushFront(B, bucket, color, S, x, y, w, h, d, inset) {
-    var ang = frontAngle(S, x);
-    var z = S.frontZ(x) - d / 2 + (inset === undefined ? 0.02 : inset);
+    var ex = effX(S, x, y, 0.92);
+    var ang = frontAngle(S, ex);
+    var z = S.frontZ(ex) - d / 2 + (inset === undefined ? 0.02 : inset);
     box(B, bucket, color, w, h, d, x, y, z, 0, -ang, 0);
   }
   function flushRear(B, bucket, color, S, x, y, w, h, d, inset) {
-    var ang = rearAngle(S, x);
-    var z = S.rearZ(x) + d / 2 - (inset === undefined ? 0.02 : inset);
+    var ex = effX(S, x, y, -0.92);
+    var ang = rearAngle(S, ex);
+    var z = S.rearZ(ex) + d / 2 - (inset === undefined ? 0.02 : inset);
     box(B, bucket, color, w, h, d, x, y, z, 0, -ang, 0);
   }
   function headlights(B, S, o) {
@@ -715,9 +731,10 @@
     sedan: { L: 4.75, W: 1.83, clear: 0.15, wR: 0.32, tw: 0.21, ax: [0.6, -0.6], pF: 2.6, pR: 3.4, nTop: 2.6, nBot: 4,
       top: [[-1, 0.56], [-0.94, 0.9], [-0.62, 0.95], [0.48, 0.92], [0.88, 0.8], [1, 0.48]], bumpF: 0.08, bumpR: 0.08,
       gh: { gR: -0.6, rR: -0.3, rF: 0.1, gF: 0.48, roof: 1.45, tumble: 0.78, bU: [-0.08], trim: true }, grip: 1.0 },
-    suv: { L: 4.75, W: 1.92, clear: 0.28, wR: 0.38, tw: 0.24, ax: [0.6, -0.62], pF: 2.8, pR: 5, nTop: 3, nBot: 5,
-      top: [[-1, 0.72], [-0.95, 1.08], [0.52, 1.1], [0.88, 0.98], [1, 0.62]], bumpF: 0.1, bumpR: 0.06, archGap: 0.08,
-      gh: { gR: -0.94, rR: -0.82, rF: 0.18, gF: 0.52, roof: 1.75, tumble: 0.86, bU: [-0.08, -0.5], cW: 0.18 }, grip: 0.9,
+    suv: { L: 4.75, W: 1.92, clear: 0.28, wR: 0.38, tw: 0.24, ax: [0.6, -0.62], pF: 4.2, pR: 6, nTop: 3.8, nBot: 5,
+      top: [[-1, 0.72], [-0.95, 1.08], [0.42, 1.1], [0.9, 1.04], [1, 0.74]], bumpF: 0.1, bumpR: 0.06, archGap: 0.08,
+      grilleW: 0.95, grilleH: 0.28,
+      gh: { gR: -0.94, rR: -0.82, rF: 0.08, gF: 0.42, roof: 1.75, tumble: 0.86, bU: [-0.14, -0.52], cW: 0.18 }, grip: 0.9,
       cladding: true, rails: true },
     offroad: { L: 4.45, W: 1.9, clear: 0.34, wR: 0.42, tw: 0.27, ax: [0.62, -0.62], pF: 9, pR: 12, nTop: 7, nBot: 7,
       top: [[-1, 0.8], [-0.97, 1.12], [0.65, 1.15], [0.95, 1.08], [1, 0.82]], archGap: 0.1,
@@ -855,13 +872,13 @@
       // 赛车条纹（覆盖在引擎盖、车顶、尾部）
       var stc = o.stripes;
       for (var ss = -1; ss <= 1; ss += 2) {
-        var segs = 14;
+        var segs = 34;
         for (var q = 0; q < segs; q++) {
           var u1 = lerp(-0.98, 0.98, q / segs), u2 = lerp(-0.98, 0.98, (q + 1) / segs);
           var yy1 = Math.max(S.y1(u1), u1 > G.gR && u1 < G.gF ? gh.yt(u1) : 0) + 0.012;
           var yy2 = Math.max(S.y1(u2), u2 > G.gR && u2 < G.gF ? gh.yt(u2) : 0) + 0.012;
           if (u1 > G.gR && u1 < G.gF) { if (!(u1 >= G.rR && u2 <= G.rF)) continue; }
-          beam(B, 'paint', stc, V(ss * 0.16, yy1, S.z(u1)), V(ss * 0.16, yy2, S.z(u2)), 0.16, 0.01);
+          beam(B, 'paint', stc, V(ss * 0.16, yy1, S.z(u1)), V(ss * 0.16, yy2, S.z(u2)), 0.16, 0.008);
         }
       }
     }
