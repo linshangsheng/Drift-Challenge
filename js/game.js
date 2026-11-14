@@ -104,7 +104,7 @@
     this.combo = null;
     this.sus = null;
     this.timeScale = 1;
-    this.magnetTimer = 0; this.doubleTimer = 0; this.coinChain = 0; this.coinChainT = 0;
+    this.magnetTimer = 0; this.doubleTimer = 0; this.coinChain = 0; this.coinChainT = 0; this.edgeT = 0;
     this.coachCorner = -1;
     this.coach = DC.Save.data.tutorialDone ? null : { until: 5, action: null };
     this.snapCamera();
@@ -851,9 +851,19 @@
       if (!wasAir) { this.stats.jumps++; this.notify('air', {}); }
     }
     if (h.air && !ground && h.y < -2.5) {
+      this.edgeT = 0;
       if (this.shieldLeft > 0) this.revive();
       else { this.startFall(); return; }
     }
+    // 极限救车：车身中心已经悬空、只靠边缘压着路面，最后又回到路上
+    if (!h.air && !ground) this.edgeT = (this.edgeT || 0) + dt;
+    else if (ground && !h.air && this.edgeT > 0.1) {
+      var eb = Math.round(Math.max(3, DC.incomeOf(h.level) * 4) * (1 + this.edgeT * 4) * this.turbo * (this.doubleTimer > 0 ? 2 : 1));
+      this.stats.coins += eb;
+      this.stats.saves = (this.stats.saves || 0) + 1;
+      this.notify('edge', { bonus: eb });
+      this.edgeT = 0;
+    } else if (ground) this.edgeT = 0;
     // 特殊路段效果
     var eff = ground ? ground.effect : null;
     if (eff === 'boost' && this.lastEffect !== 'boost') {

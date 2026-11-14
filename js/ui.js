@@ -302,6 +302,10 @@
       this.floater(this.game.head.x, this.game.head.y + 3, this.game.head.z, '加速！', '#3df5ff');
     } else if (type === 'slick') {
       this.floater(this.game.head.x, this.game.head.y + 3, this.game.head.z, '打滑！', '#c9a8ff');
+    } else if (type === 'edge') {
+      this.floater(this.game.head.x, this.game.head.y + 4.5, this.game.head.z, '极限救车！+' + DC.fmt(d.bonus), '#ff8a3d');
+      DC.Audio.comboUp(3);
+      DC.vibrate([15, 30, 15]);
     } else if (type === 'power') {
       this.floater(this.game.head.x, this.game.head.y + 4, this.game.head.z, d.icon + ' ' + d.name, d.color);
       if (d.type === 'shield') { $('hudShield').classList.remove('hidden'); $('hudShield').querySelector('span').textContent = d.shield; }
