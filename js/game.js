@@ -100,6 +100,9 @@
     this.avgV = 0;
     this.combo = null;
     this.sus = null;
+    this.timeScale = 1;
+    this.coachCorner = -1;
+    this.coach = DC.Save.data.tutorialDone ? null : { until: 5, action: null };
     this.snapCamera();
     // 开局先放几辆车
     for (var i = 0; i < 4; i++) this.spawnRoadCar(30 + i * 22 + rand(0, 10));
@@ -538,6 +541,38 @@
     return s.angle;
   };
 
+  // 新手引导：前几个弯在该转向的时机进入慢动作并提示
+  Game.prototype.coachTarget = function (P) {
+    var h = this.head, s = this.track.get(this.curSeg), n = this.track.get(this.curSeg + 1);
+    if (!s) return h.bodyA;
+    if (!n) return s.angle;
+    if (this.coachCorner === n.idx) return n.angle;
+    var loc = this.track.localOf(s, h.x, h.z), remain = s.len - loc.along;
+    if (remain > h.v * 1.3 + 20) return s.angle;
+    var src = h.ph;
+    var st = { x: src.x, z: src.z, vx: src.vx, vz: src.vz, psi: src.psi, r: src.r, wheel: src.wheel, out: {} };
+    var PP = Object.assign({}, P, { air: false, slopeA: 0 });
+    for (var i = 0; i < 160; i++) DC.Physics.step(st, PP, n.angle, 1 / 110);
+    var lat = this.track.localOf(n, st.x, st.z).lat;
+    var k = s.dx * n.dz - s.dz * n.dx;
+    if (lat * k >= -0.3 || remain < -s.w / 2 + 1) { this.coachCorner = n.idx; return n.angle; }
+    return s.angle;
+  };
+  Game.prototype.updateCoach = function (P, target) {
+    if (!this.coach) return;
+    if (this.curSeg >= this.coach.until) {
+      this.coach = null; this.timeScale = 1;
+      DC.Save.data.tutorialDone = true; DC.Save.save();
+      this.notify('coach', { action: null, done: true });
+      return;
+    }
+    var ideal = this.coachTarget(P);
+    var wrong = Math.abs(ideal - target) > 0.1 && !this.head.air;
+    var action = wrong ? (ideal > 0 ? 'hold' : 'release') : null;
+    this.timeScale = wrong ? 0.22 : 1;
+    if (action !== this.coach.action) { this.coach.action = action; this.notify('coach', { action: action }); }
+  };
+
   Game.prototype.revive = function () {
     var h = this.head;
     var s = this.track.get(this.curSeg);
@@ -561,6 +596,8 @@
 
   Game.prototype.startFall = function () {
     var h = this.head;
+    this.timeScale = 1;
+    if (this.coach) { this.coach.action = null; this.notify('coach', { action: null }); }
     if (this.guide) this.guide.visible = false;
     this.state = 'falling';
     this.falling = true;
@@ -633,6 +670,7 @@
     ph.x = h.x; ph.z = h.z;
     for (var i = 0; i < n; i++) DC.Physics.step(ph, P, target, sub);
     this.updateGuide(P, target);
+    if (this.autopilot <= 0) this.updateCoach(P, target);
     var o = ph.out;
     h.x = ph.x; h.z = ph.z;
     h.v = Math.sqrt(ph.vx * ph.vx + ph.vz * ph.vz);
@@ -906,6 +944,7 @@
     }
 
     if (this.state === 'running') {
+      if (this.timeScale && this.timeScale !== 1) dt *= this.timeScale; // 新手引导慢动作
       this.stats.time += dt;
       this.updateHead(dt);
     }

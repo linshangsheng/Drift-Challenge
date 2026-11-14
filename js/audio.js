@@ -156,9 +156,102 @@
     return p;
   }
 
+  // ---------- 背景音乐：程序合成的步进音序器 ----------
+  // 和弦进行 Am - F - C - G，16 分音符网格
+  var music = { on: true, mode: 'off', gain: null, timer: null, step: 0, nextT: 0, bpm: 126 };
+  var CHORDS = [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]]; // MIDI 音高
+  var ARP = [0, 1, 2, 1, 0, 2, 1, 2];
+  function mtof(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+  function mNote(freq, t, dur, type, vol, cutoff) {
+    var o = ctx.createOscillator(); o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    var g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    if (cutoff) {
+      var f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(cutoff, t); f.Q.value = 2;
+      o.connect(f); f.connect(g);
+    } else o.connect(g);
+    g.connect(music.gain);
+    o.start(t); o.stop(t + dur + 0.03);
+  }
+  function mNoise(t, dur, vol, hp) {
+    var s = ctx.createBufferSource(); s.buffer = music.noise;
+    var f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = hp;
+    var g = ctx.createGain();
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(f); f.connect(g); g.connect(music.gain);
+    s.start(t, Math.random() * 0.5); s.stop(t + dur + 0.02);
+  }
+  function mKick(t) {
+    var o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.14);
+    var g = ctx.createGain();
+    g.gain.setValueAtTime(0.5, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+    o.connect(g); g.connect(music.gain); o.start(t); o.stop(t + 0.22);
+  }
+  function scheduleStep(step, t) {
+    var race = music.mode === 'race';
+    var bar = Math.floor(step / 16) % 4, s16 = step % 16, chord = CHORDS[bar];
+    var d = 60 / music.bpm / 4;
+    // 和弦铺底（每小节一次）
+    if (s16 === 0) {
+      for (var i = 0; i < 3; i++) {
+        mNote(mtof(chord[i]), t, d * 15.5, 'sawtooth', race ? 0.035 : 0.05, 700);
+        mNote(mtof(chord[i]) * 1.006, t, d * 15.5, 'sawtooth', race ? 0.025 : 0.035, 600);
+      }
+    }
+    // 琶音
+    if (s16 % 2 === 0) {
+      var n = chord[ARP[(s16 / 2) % 8]] + 12 + (Math.floor(step / 64) % 2 ? 12 : 0);
+      mNote(mtof(n), t, d * 1.7, 'triangle', race ? 0.07 : 0.05);
+    }
+    if (race) {
+      // 贝斯：16 分音符律动
+      var bn = chord[0] - 24 + (s16 % 8 === 6 ? 12 : 0);
+      if (s16 % 4 !== 1) mNote(mtof(bn), t, d * 0.9, 'sawtooth', 0.16, 320 + (s16 % 4 === 0 ? 250 : 0));
+      if (s16 % 4 === 0) mKick(t);
+      if (s16 % 8 === 4) mNoise(t, 0.13, 0.22, 1800);       // 军鼓
+      if (s16 % 2 === 0) mNoise(t, s16 % 4 === 2 ? 0.07 : 0.03, 0.07, 7000); // 踩镲
+      if (s16 === 14 && bar === 3) { mNoise(t, 0.1, 0.16, 2500); mNoise(t + d, 0.1, 0.18, 2500); } // 过门
+    } else if (s16 === 0 && bar % 2 === 0) {
+      mNote(mtof(chord[0] - 12), t, d * 14, 'sine', 0.14);
+    }
+  }
+  function musicTick() {
+    if (!ctx || music.mode === 'off' || !music.on || ctx.state !== 'running') return;
+    var d = 60 / music.bpm / 4;
+    if (music.nextT < ctx.currentTime) music.nextT = ctx.currentTime + 0.05;
+    while (music.nextT < ctx.currentTime + 0.35) {
+      scheduleStep(music.step, music.nextT);
+      music.step++;
+      music.nextT += d;
+    }
+  }
+  function setMusicMode(mode) {
+    music.mode = mode;
+    if (!ctx) return;
+    if (!music.gain) {
+      music.gain = ctx.createGain(); music.gain.gain.value = 0;
+      music.gain.connect(master);
+      music.noise = noiseBuffer(1);
+    }
+    var target = !music.on || mode === 'off' ? 0 : (mode === 'race' ? 0.3 : 0.3);
+    music.gain.gain.setTargetAtTime(target, ctx.currentTime, 0.4);
+    music.bpm = mode === 'race' ? 132 : 104;
+    if (!music.timer) music.timer = setInterval(musicTick, 90);
+  }
+
   DC.Audio = {
     renderTest: renderTest,
-    unlock: ensure,
+    unlock: function () {
+      var ok = ensure();
+      if (ok && music.mode !== 'off' && !music.gain) setMusicMode(music.mode);
+      return ok;
+    },
+    setMusicMode: setMusicMode,
+    setMusicEnabled: function (on) { music.on = on; setMusicMode(music.mode); },
     setEnabled: function (on) {
       enabled = on;
       if (master) master.gain.setTargetAtTime(on ? 0.7 : 0, ctx.currentTime, 0.05);

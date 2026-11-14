@@ -61,11 +61,18 @@
         self.showMenu();
       });
     });
+    click('btnTutorial', function () {
+      DC.Save.data.tutorialDone = false; DC.Save.save();
+      self.toast('下一局会重新进行新手引导', '#ffd34d');
+    });
     click('confirmNo', function () { self.closeModal('confirmModal'); });
     click('confirmYes', function () { self.closeModal('confirmModal'); if (self.confirmFn) self.confirmFn(); });
 
     $('optSound').addEventListener('change', function (e) {
       DC.Save.data.settings.sound = e.target.checked; DC.Save.save(); self.applySettings();
+    });
+    $('optMusic').addEventListener('change', function (e) {
+      DC.Save.data.settings.music = e.target.checked; DC.Save.save(); self.applySettings();
     });
     $('optGuide').addEventListener('change', function (e) {
       DC.Save.data.settings.guide = e.target.checked; DC.Save.save();
@@ -126,6 +133,8 @@
     $('optShadows').checked = s.shadows;
     $('optVibrate').checked = s.vibrate !== false;
     $('optGuide').checked = s.guide !== false;
+    $('optMusic').checked = s.music !== false;
+    DC.Audio.setMusicEnabled(s.music !== false);
     DC.Audio.setEnabled(s.sound);
     if (DC.setShadows) DC.setShadows(s.shadows);
   };
@@ -142,6 +151,7 @@
   };
 
   UI.prototype.hideAll = function () {
+    $('coach').classList.add('hidden');
     this.clearFloaters();
     $('toasts').innerHTML = '';
     ['menu', 'shop', 'hud'].forEach(function (id) { $(id).classList.add('hidden'); });
@@ -166,6 +176,7 @@
     this.game.enterShowroom(save.selected);
     $('menu').classList.remove('hidden');
     this.updateViewShift();
+    DC.Audio.setMusicMode('menu');
     this.fillCarCard('menu', save.selected);
     $('menuBest').textContent = 'Lv' + save.best.level;
     $('menuCoins').textContent = DC.fmt(save.coins);
@@ -201,6 +212,7 @@
     $('toasts').innerHTML = '';
     this.clearFloaters();
     this.game.startRun();
+    DC.Audio.setMusicMode('race');
     var sl = DC.Save.modLevel('shield');
     $('hudShield').classList.toggle('hidden', sl <= 0);
     $('hudShield').querySelector('span').textContent = sl;
@@ -268,6 +280,17 @@
       this.floater(this.game.head.x, this.game.head.y + 3, this.game.head.z, '加速！', '#3df5ff');
     } else if (type === 'slick') {
       this.floater(this.game.head.x, this.game.head.y + 3, this.game.head.z, '打滑！', '#c9a8ff');
+    } else if (type === 'coach') {
+      var co = $('coach');
+      if (!d.action) {
+        co.classList.add('hidden');
+        if (d.done) this.toast('上手了！接下来靠你自己<small>绿色辅助线会显示现在转向后的滑行轨迹</small>', '#3ddc84');
+      } else {
+        var touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+        $('coachIcon').textContent = d.action === 'hold' ? '⬅️' : '➡️';
+        $('coachText').textContent = d.action === 'hold' ? (touch ? '现在按住屏幕！' : '现在按住空格！') : (touch ? '现在松开手指！' : '现在松开空格！');
+        co.classList.remove('hidden');
+      }
     } else if (type === 'comboUp') {
       var dm = $('driftMeter');
       dm.classList.remove('pulse'); void dm.offsetWidth; dm.classList.add('pulse');
@@ -311,6 +334,7 @@
     $('overRecord').textContent = '新纪录：' + r.join(' · ');
     this.openModal('overModal');
     this.overShownAt = performance.now();
+    DC.Audio.setMusicMode('menu');
   };
 
   UI.prototype.update = function (dt) {

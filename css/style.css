@@ -166,6 +166,16 @@ kbd {
 
 body.shop-mode #toasts { left: 26%; width: 46vw; }
 
+.coach {
+  position: fixed; left: 50%; top: 24%; transform: translate(-50%, -50%); z-index: 8; pointer-events: none; text-align: center;
+  background: rgba(8, 10, 18, .72); border: 2px solid #ffd34d; border-radius: 20px; padding: 16px 28px; backdrop-filter: blur(6px);
+  animation: coachIn .25s ease;
+}
+.coach-icon { font-size: 44px; line-height: 1; animation: coachPulse .7s ease-in-out infinite; }
+.coach-text { font-size: clamp(24px, 4.5vw, 40px); font-weight: 900; color: #ffd34d; margin: 6px 0 4px; text-shadow: 0 0 20px rgba(255,211,77,.5); }
+.coach-sub { font-size: 13px; color: #e8ecf3; }
+@keyframes coachIn { from { transform: translate(-50%, -50%) scale(.7); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+@keyframes coachPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
 #speedFx { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4; }
 .drift-meter {
   position: absolute; left: 50%; top: max(86px, calc(env(safe-area-inset-top) + 76px)); transform: translateX(-50%);

@@ -42,6 +42,7 @@
   </div>
 
   <div id="countdown" class="countdown hidden"></div>
+  <div id="coach" class="coach hidden"><div id="coachIcon" class="coach-icon"></div><div id="coachText" class="coach-text"></div><div class="coach-sub">转向后车会继续滑一段，所以要提前操作</div></div>
   <div id="toasts"></div>
   <div id="floaters"></div>
 
@@ -153,6 +154,7 @@
     <div class="modal-box">
       <h2>设置</h2>
       <label class="toggle"><input type="checkbox" id="optSound"> <span>音效</span></label>
+      <label class="toggle"><input type="checkbox" id="optMusic"> <span>背景音乐</span></label>
       <label class="toggle"><input type="checkbox" id="optShadows"> <span>实时阴影（关闭可提升流畅度）</span></label>
       <label class="toggle"><input type="checkbox" id="optVibrate"> <span>手机震动反馈</span></label>
       <label class="toggle"><input type="checkbox" id="optGuide"> <span>漂移辅助线（显示现在转向后的滑行轨迹）</span></label>
@@ -169,6 +171,7 @@
           <li>坚持越久、等级越高，金币越多。金币可以在车库买更好的起步车和改装。</li>
         </ul>
       </div>
+      <button id="btnTutorial" class="btn">重新开启新手引导</button>
       <button id="btnReset" class="btn danger">重置存档</button>
       <button id="btnSettingsClose" class="btn primary">完成</button>
     </div>
