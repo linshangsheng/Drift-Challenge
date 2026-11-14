@@ -4,7 +4,7 @@
   var T = THREE;
   var LEFT = Math.PI / 4, RIGHT = -Math.PI / 4;
   DC.ANGLE_LEFT = LEFT; DC.ANGLE_RIGHT = RIGHT;
-  var THICK = 1.6;
+  var THICK = 1.6, UVS = 7; // UVS：纹理每 7 米重复一次
 
   function rand(a, b) { return a + Math.random() * (b - a); }
   function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
@@ -36,6 +36,31 @@
     this.pillarGeo.translate(0, -0.5, 0);
 
     var m = world.mats;
+    // 路面细节纹理：颗粒、斑驳和细裂纹（与主题颜色相乘）
+    m.asphalt.map = canvasTex(256, 256, function (x, w, h) {
+      x.fillStyle = '#d2d2d2'; x.fillRect(0, 0, w, h);
+      for (var i = 0; i < 26; i++) {
+        var px = rand(0, w), py = rand(0, h), r = rand(20, 70), dark = Math.random() < 0.6;
+        for (var ox = -1; ox <= 1; ox++) for (var oy = -1; oy <= 1; oy++) {
+          var g = x.createRadialGradient(px + ox * w, py + oy * h, 0, px + ox * w, py + oy * h, r);
+          g.addColorStop(0, dark ? 'rgba(120,120,120,0.22)' : 'rgba(255,255,255,0.2)'); g.addColorStop(1, 'rgba(160,160,160,0)');
+          x.fillStyle = g; x.fillRect(px + ox * w - r, py + oy * h - r, r * 2, r * 2);
+        }
+      }
+      for (var k = 0; k < 9000; k++) {
+        var v = Math.random() < 0.5 ? 255 : 90;
+        x.fillStyle = 'rgba(' + v + ',' + v + ',' + v + ',' + rand(0.05, 0.22) + ')';
+        x.fillRect(rand(0, w), rand(0, h), rand(1, 2.2), rand(1, 2.2));
+      }
+      x.strokeStyle = 'rgba(70,70,70,0.25)'; x.lineWidth = 1;
+      for (var c = 0; c < 7; c++) {
+        var cx = rand(0, w), cy = rand(0, h);
+        x.beginPath(); x.moveTo(cx, cy);
+        for (var q = 0; q < 6; q++) { cx += rand(-22, 22); cy += rand(-22, 22); x.lineTo(cx, cy); }
+        x.stroke();
+      }
+    });
+    m.asphalt.needsUpdate = true;
     this.asphaltB = m.asphalt.clone();
     this.asphaltB.polygonOffset = true; this.asphaltB.polygonOffsetFactor = -1; this.asphaltB.polygonOffsetUnits = -2;
     var po = function (mat, f) { mat.polygonOffset = true; mat.polygonOffsetFactor = f; mat.polygonOffsetUnits = f * 2; return mat; };
@@ -217,7 +242,9 @@
     for (var i = 0; i < pts.length - 1; i++) {
       var z0 = pts[i][0], h0 = pts[i][1], z1 = pts[i + 1][0], h1 = pts[i + 1][1];
       quad(top, [hw, h0, z0], [hw, h1, z1], [-hw, h1, z1], [-hw, h0, z0]);
-      for (var k = 0; k < 6; k++) uvTop.push(0, 0);
+      // 与 quad() 的顶点顺序一致：a, c, b, a, d, c
+      var ua = hw / UVS, ub = -hw / UVS, va = z0 / UVS, vb = z1 / UVS;
+      uvTop.push(ua, va, ub, vb, ua, vb, ua, va, ub, va, ub, vb);
       quad(side, [hw, h0 - THICK, z0], [hw, h1 - THICK, z1], [hw, h1, z1], [hw, h0, z0]);
       quad(side, [-hw, h0, z0], [-hw, h1, z1], [-hw, h1 - THICK, z1], [-hw, h0 - THICK, z0]);
       quad(side, [-hw, h0 - THICK, z0], [-hw, h1 - THICK, z1], [hw, h1 - THICK, z1], [hw, h0 - THICK, z0]);
@@ -228,6 +255,9 @@
     var g = new T.BufferGeometry();
     var all = top.concat(side);
     g.setAttribute('position', new T.Float32BufferAttribute(all, 3));
+    var uvAll = new Float32Array(all.length / 3 * 2);
+    uvAll.set(uvTop, 0);
+    g.setAttribute('uv', new T.BufferAttribute(uvAll, 2));
     g.addGroup(0, top.length / 3, 0);
     g.addGroup(top.length / 3, side.length / 3, 1);
     g.computeVertexNormals();

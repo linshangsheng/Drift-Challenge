@@ -35,7 +35,7 @@
     ['skyTop', 'skyBottom', 'fog', 'sun', 'hemiSky', 'hemiGround', 'cloud', 'mountain', 'rock', 'asphalt', 'edge'].forEach(function (k) {
       self.cur[k] = new T.Color(th[k]);
     });
-    this.cur.sunI = th.sunI; this.cur.hemiI = th.hemiI; this.cur.edgeGlow = th.edgeGlow; this.cur.stars = th.stars; this.cur.env = th.env;
+    this.cur.sunI = th.sunI; this.cur.hemiI = th.hemiI; this.cur.edgeGlow = th.edgeGlow; this.cur.stars = th.stars; this.cur.env = th.env; this.cur.aurora = th.aurora; this.cur.sunSize = th.sunSize;
 
     scene.fog = new T.Fog(this.cur.fog.clone(), 80, 520);
 
@@ -76,13 +76,63 @@
     this.mountainMat = new T.MeshStandardMaterial({ color: this.cur.mountain.clone(), flatShading: true, roughness: 1 });
     this.mountainGeo = new T.ConeGeometry(1, 1, 6, 1);
     this.mountainGeo.translate(0, 0.5, 0);
+    // 远山用实例化网格，一次绘制
     this.mountains = [];
+    this.mountainMesh = new T.InstancedMesh(this.mountainGeo, this.mountainMat, 70);
+    this.mountainMesh.frustumCulled = false;
+    scene.add(this.mountainMesh);
     for (var m = 0; m < 70; m++) {
-      var mesh = new T.Mesh(this.mountainGeo, this.mountainMat);
-      this.mountains.push(mesh);
-      scene.add(mesh);
-      this.placeMountain(mesh, 0, 0, true);
+      var mt = { idx: m, position: new T.Vector3() };
+      this.mountains.push(mt);
+      this.placeMountain(mt, 0, 0, true);
     }
+
+    // 太阳 / 月亮
+    var sunCv = document.createElement('canvas');
+    sunCv.width = sunCv.height = 256;
+    var sx = sunCv.getContext('2d');
+    var sgd = sx.createRadialGradient(128, 128, 0, 128, 128, 128);
+    sgd.addColorStop(0, 'rgba(255,255,255,1)'); sgd.addColorStop(0.12, 'rgba(255,255,255,0.95)');
+    sgd.addColorStop(0.2, 'rgba(255,255,255,0.4)'); sgd.addColorStop(0.5, 'rgba(255,255,255,0.1)'); sgd.addColorStop(1, 'rgba(255,255,255,0)');
+    sx.fillStyle = sgd; sx.fillRect(0, 0, 256, 256);
+    this.sunSprite = new T.Sprite(new T.SpriteMaterial({ map: new T.CanvasTexture(sunCv), color: this.cur.sun.clone(), fog: false,
+      depthWrite: false, blending: T.AdditiveBlending, transparent: true }));
+    this.sunSprite.renderOrder = -9;
+    scene.add(this.sunSprite);
+
+    // 极光：几条随时间摆动的光幕
+    this.auroraMat = new T.ShaderMaterial({
+      uniforms: { time: { value: 0 }, opacity: { value: 0 } },
+      vertexShader: [
+        'uniform float time; varying vec2 vUv;',
+        'void main(){ vUv = uv; vec3 p = position;',
+        '  p.z += sin(p.x * 0.012 + time * 0.35) * 60.0 + sin(p.x * 0.031 - time * 0.2) * 25.0;',
+        '  p.y += sin(p.x * 0.02 + time * 0.5) * 12.0;',
+        '  gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0); }'
+      ].join('\n'),
+      fragmentShader: [
+        'uniform float time; uniform float opacity; varying vec2 vUv;',
+        'void main(){',
+        '  float band = 0.55 + 0.45 * sin(vUv.x * 40.0 + time * 0.8) * sin(vUv.x * 13.0 - time * 0.3);',
+        '  float fade = pow(1.0 - vUv.y, 1.6) * smoothstep(0.0, 0.08, vUv.y) * smoothstep(0.0, 0.1, vUv.x) * smoothstep(1.0, 0.9, vUv.x);',
+        '  vec3 c = mix(vec3(0.1, 1.0, 0.55), vec3(0.45, 0.3, 1.0), clamp(vUv.y * 1.3 + 0.2 * sin(vUv.x * 9.0 + time * 0.4), 0.0, 1.0));',
+        '  gl_FragColor = vec4(c, fade * band * opacity * 0.75);',
+        '}'
+      ].join('\n'),
+      transparent: true, depthWrite: false, blending: T.AdditiveBlending, side: T.DoubleSide, fog: false
+    });
+    this.aurora = new T.Group();
+    for (var au = 0; au < 3; au++) {
+      var am = new T.Mesh(new T.PlaneGeometry(1500, 300, 80, 1), this.auroraMat);
+      am.position.set((au - 1) * 260, 330 + au * 50, 650 - au * 110);
+      am.rotation.y = (au - 1) * 0.35;
+      this.aurora.add(am);
+    }
+    this.aurora.renderOrder = -8;
+    this.aurora.visible = false;
+    scene.add(this.aurora);
+
+    this.scenery = new DC.Scenery(scene);
 
     // 灯光
     this.hemi = new T.HemisphereLight(this.cur.hemiSky.clone(), this.cur.hemiGround.clone(), th.hemiI);
@@ -108,15 +158,17 @@
     this.mats.top = [this.mats.rock, this.mats.rock, this.mats.asphalt, this.mats.rock, this.mats.rock, this.mats.rock];
   }
 
+  var mtx = new T.Matrix4(), mq = new T.Quaternion(), msc = new T.Vector3(), yAxis = new T.Vector3(0, 1, 0);
   World.prototype.placeMountain = function (mesh, cx, cz, initial) {
     var side = Math.random() < 0.5 ? -1 : 1;
     var r = 30 + Math.random() * 70;
     var x = cx + side * (r + 75 + Math.random() * 320); // 与赛道保持距离
     var z = initial ? cz - 100 + Math.random() * 800 : cz + 550 + Math.random() * 250;
     var h = 50 + Math.random() * 150;
-    mesh.scale.set(r, h, r);
     mesh.position.set(x, -75, z);
-    mesh.rotation.y = Math.random() * Math.PI;
+    mtx.compose(mesh.position, mq.setFromAxisAngle(yAxis, Math.random() * Math.PI), msc.set(r, h, r));
+    this.mountainMesh.setMatrixAt(mesh.idx, mtx);
+    this.mountainMesh.instanceMatrix.needsUpdate = true;
   };
 
   World.prototype.setThemeByLevel = function (level, instant) {
@@ -126,6 +178,7 @@
 
   World.prototype.resetMountains = function (cx, cz) {
     for (var i = 0; i < this.mountains.length; i++) this.placeMountain(this.mountains[i], cx, cz, true);
+    this.scenery.reset(cx, cz, this.themeIdx);
   };
 
   var tmpC = new T.Color();
@@ -154,10 +207,20 @@
       this.mats.asphalt.envMapIntensity = c.env * 0.35; this.mats.rock.envMapIntensity = c.env * 0.3;
     }
     this.stars.visible = c.stars > 0.02;
+    this.sunSprite.material.color.copy(c.sun);
+    this.auroraMat.uniforms.opacity.value = c.aurora;
+    this.auroraMat.uniforms.time.value = performance.now() * 0.001;
+    this.aurora.visible = c.aurora > 0.02;
+    this.scenery.solidMat.envMapIntensity = c.env * 0.25;
 
     if (cam) {
       this.sky.position.copy(cam.position);
       this.stars.position.copy(cam.position);
+      this.aurora.position.set(cam.position.x, 0, cam.position.z);
+      // 太阳在前方偏右的低空
+      this.sunSprite.position.set(cam.position.x + 330, cam.position.y + 150 + c.sunSize * 0.2, cam.position.z + 780);
+      this.sunSprite.scale.set(c.sunSize, c.sunSize, 1);
+      this.scenery.update(cam, this.themeIdx);
       // 云海跟随相机，贴图偏移让云保持在世界坐标中
       this.cloud.position.x = cam.position.x;
       this.cloud.position.z = cam.position.z;

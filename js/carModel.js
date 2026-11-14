@@ -1098,7 +1098,11 @@
     var t0 = performance.now();
     while (warmQueue.length) {
       var l = warmQueue.shift();
-      if (!cache[l]) cache[l] = buildCar(l);
+      if (!cache[l]) {
+        var steer = typeof l === 'string';
+        steerMode = steer;
+        try { cache[l] = buildCar(steer ? +l.slice(1) : l); } finally { steerMode = false; }
+      }
       var left = deadline && deadline.timeRemaining ? deadline.timeRemaining() : 8 - (performance.now() - t0);
       if (left < 4) break;
     }
@@ -1108,8 +1112,11 @@
     if (window.requestIdleCallback) window.requestIdleCallback(warmStep, { timeout: 300 });
     else setTimeout(warmStep, 30);
   }
-  DC.warmCars = function (from, to) {
-    for (var l = Math.max(1, from); l <= Math.min(DC.MAX_LEVEL, to); l++) if (!cache[l] && warmQueue.indexOf(l) < 0) warmQueue.push(l);
+  DC.warmCars = function (from, to, steerable) {
+    for (var l = Math.max(1, from); l <= Math.min(DC.MAX_LEVEL, to); l++) {
+      var key = steerable ? 's' + l : l;
+      if (!cache[key] && warmQueue.indexOf(key) < 0) warmQueue.push(key);
+    }
     if (!warming && warmQueue.length) { warming = true; schedule(); }
   };
 

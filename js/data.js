@@ -259,19 +259,19 @@ if (window.THREE && THREE.ColorManagement) THREE.ColorManagement.legacyMode = fa
   DC.THEMES = [
     { name: '黄昏峡谷', surface: 'asphalt', from: 1, skyTop: '#2b4c8c', skyBottom: '#ffb38a', fog: '#f4a582', sun: '#ffd2a1', sunI: 1.25,
       hemiSky: '#ffe2c4', hemiGround: '#6b4a3a', hemiI: 0.75, cloud: '#ffd7c2', mountain: '#8a5a4a', rock: '#7a5240',
-      asphalt: '#3a3a40', edge: '#ffffff', edgeGlow: 0.15, stars: 0, env: 0.9 },
+      asphalt: '#3a3a40', edge: '#ffffff', edgeGlow: 0.15, stars: 0, env: 0.9, aurora: 0, sunSize: 420 },
     { name: '雪山之巅', surface: 'snow', from: 21, skyTop: '#3d7bd9', skyBottom: '#dff1ff', fog: '#d6ebff', sun: '#ffffff', sunI: 1.3,
       hemiSky: '#e8f4ff', hemiGround: '#7d8ea3', hemiI: 0.85, cloud: '#ffffff', mountain: '#e9f2fb', rock: '#8c97a6',
-      asphalt: '#c9d3df', edge: '#2f8fd8', edgeGlow: 0.25, stars: 0, env: 1.0 },
+      asphalt: '#c9d3df', edge: '#2f8fd8', edgeGlow: 0.25, stars: 0, env: 1.0, aurora: 0, sunSize: 300 },
     { name: '沙漠烈日', surface: 'sand', from: 41, skyTop: '#2f8fe0', skyBottom: '#fbe3a6', fog: '#f2d38e', sun: '#fff1c9', sunI: 1.45,
       hemiSky: '#fff3d6', hemiGround: '#a7743d', hemiI: 0.8, cloud: '#f7dca0', mountain: '#d49a55', rock: '#b9773e',
-      asphalt: '#b08a5a', edge: '#ffffff', edgeGlow: 0.2, stars: 0, env: 0.9 },
+      asphalt: '#b08a5a', edge: '#ffffff', edgeGlow: 0.2, stars: 0, env: 0.9, aurora: 0, sunSize: 460 },
     { name: '霓虹夜城', surface: 'wet', from: 61, skyTop: '#070720', skyBottom: '#4a1170', fog: '#2a0b45', sun: '#b38cff', sunI: 0.7,
       hemiSky: '#8a6cff', hemiGround: '#1a0a2a', hemiI: 0.65, cloud: '#5a2a8a', mountain: '#24124a', rock: '#2a1d45',
-      asphalt: '#15151f', edge: '#ff2bd6', edgeGlow: 1.6, stars: 1, env: 0.45 },
+      asphalt: '#15151f', edge: '#ff2bd6', edgeGlow: 1.6, stars: 1, env: 0.45, aurora: 0, sunSize: 150 },
     { name: '极光冰原', surface: 'ice', from: 81, skyTop: '#020814', skyBottom: '#0f5a5a', fog: '#0b3a44', sun: '#9ffff0', sunI: 0.85,
       hemiSky: '#7fffe0', hemiGround: '#0a1a24', hemiI: 0.7, cloud: '#1f6f78', mountain: '#0d2a38', rock: '#1b3442',
-      asphalt: '#3a6a7a', edge: '#3df5ff', edgeGlow: 1.8, stars: 1, env: 0.5 }
+      asphalt: '#3a6a7a', edge: '#3df5ff', edgeGlow: 1.8, stars: 1, env: 0.5, aurora: 1, sunSize: 120 }
   ];
   DC.themeIndexOf = function (level) {
     var idx = 0;

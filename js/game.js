@@ -84,6 +84,7 @@
     this.setHeadMesh(level);
     this.world.resetMountains(0, 0);
     DC.warmCars(level - 10, level + 3);
+    DC.warmCars(level + 1, level + 2, true);
     this.shieldLeft = DC.Save.modLevel('shield');
     this.turbo = 1 + DC.Save.modLevel('turbo') * 0.15;
     this.magnet = DC.Save.modLevel('magnet');
@@ -135,7 +136,7 @@
   };
 
   // 夜间车灯照在路面上的光斑
-  var beamMat = null;
+  var beamMat = null, beamGeo = null;
   function headBeam(L, W) {
     if (!beamMat) {
       var cv = document.createElement('canvas');
@@ -148,10 +149,12 @@
       beamMat = new T.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false,
         polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6 });
     }
-    var geo = new T.PlaneGeometry(1, 1);
-    geo.rotateX(-Math.PI / 2);
-    geo.rotateY(Math.PI);
-    var m = new T.Mesh(geo, beamMat);
+    if (!beamGeo) {
+      beamGeo = new T.PlaneGeometry(1, 1);
+      beamGeo.rotateX(-Math.PI / 2);
+      beamGeo.rotateY(Math.PI);
+    }
+    var m = new T.Mesh(beamGeo, beamMat);
     m.scale.set(W * 2.6, 1, 13);
     m.position.set(0, 0.06, L / 2 + 6);
     m.renderOrder = 2;
@@ -287,6 +290,7 @@
     var oldTheme = DC.themeIndexOf(h.level);
     h.level++;
     DC.warmCars(h.level - 8, h.level + 3);
+    DC.warmCars(h.level + 1, h.level + 2, true);
     this.stats.maxLevel = Math.max(this.stats.maxLevel, h.level);
     this.setHeadMesh(h.level);
     var bonus = DC.mergeBonusOf(h.level) * 2 * this.turbo;
@@ -969,7 +973,7 @@
 
   Game.prototype.updateCamera = function (dt) {
     var h = this.head, cam = this.camera;
-    var sf = clamp((h.v - 20) / 56, 0, 1);
+    var sf = clamp((h.v - 20) / 46, 0, 1);
     if (this.falling) {
       this.camLook.x += (h.x - this.camLook.x) * damp(4, dt);
       this.camLook.y += (h.y - this.camLook.y) * damp(4, dt);
