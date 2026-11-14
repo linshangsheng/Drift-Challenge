@@ -138,6 +138,7 @@ kbd {
   display: flex; gap: 6px; max-width: calc(100vw - 32px); flex-wrap: wrap; justify-content: center;
 }
 .tail-bar .lv-chip { min-width: 44px; font-size: 13px; padding: 3px 7px; background: rgba(0,0,0,.6); }
+.tail-tip { font-size: 12px; font-weight: 700; color: rgba(255,255,255,.75); align-self: center; text-shadow: 0 1px 4px rgba(0,0,0,.8); }
 .tail-bar .lv-chip.pop { animation: pop .35s ease; }
 @keyframes pop { 0% { transform: scale(1.6); } 100% { transform: scale(1); } }
 .hint {

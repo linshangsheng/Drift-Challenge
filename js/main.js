@@ -4,7 +4,15 @@
   var T = THREE;
 
   var stage = document.getElementById('stage');
-  var renderer = new T.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  var renderer;
+  try {
+    renderer = new T.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  } catch (e) {
+    var ld = document.getElementById('loading');
+    ld.innerHTML = '你的浏览器或设备不支持 WebGL，无法运行这个 3D 游戏。<br>请换用新版 Chrome、Edge、Safari 或 Firefox，并确认已开启硬件加速。';
+    ld.style.textAlign = 'center'; ld.style.padding = '24px'; ld.style.lineHeight = '1.8';
+    return;
+  }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.outputEncoding = T.sRGBEncoding;

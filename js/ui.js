@@ -298,6 +298,10 @@
     } else if (type === 'levelup') {
       var c = DC.carOf(d.level);
       this.toast('升级！Lv' + d.level + ' ' + c.name + '<small>' + c.tier.name + ' · 极速 ' + DC.kmhOf(d.level) + ' km/h · +' + DC.fmt(d.bonus) + ' 金币</small>', c.tier.color);
+      if (d.newTier) {
+        var nt = d.newTier;
+        setTimeout(function () { self.toast('🎉 进入新档次：' + nt.name + '<small>Lv' + nt.from + '-' + nt.to + ' · 奖励 ' + DC.fmt(d.tierBonus) + ' 金币</small>', nt.color); }, 450);
+      }
       var ti = DC.themeIndexOf(d.level);
       if (DC.THEMES[ti].from === d.level) setTimeout(function () { self.toast('进入新场景：' + DC.THEMES[ti].name + '<small>' + DC.SURFACES[DC.THEMES[ti].surface].name + '，注意侧滑距离变化</small>', '#ffffff'); }, 900);
     } else if (type === 'land') {
@@ -399,12 +403,17 @@
         (g.driftAngle > 6 ? ' · 漂移角 ' + Math.round(g.driftAngle) + '°' : '');
       if (road !== this.roadText) { this.roadText = road; $('hudRoad').textContent = road; }
 
-      var sig = g.tail.map(function (t) { return t.level; }).join(',');
+      var sig = h.level + '|' + g.tail.map(function (t) { return t.level; }).join(',');
       if (sig !== this.tailSig) {
-        var prev = this.tailSig ? this.tailSig.split(',') : [];
+        var prev = this.tailSig ? this.tailSig.split('|')[1].split(',') : [];
         this.tailSig = sig;
         var bar = $('tailBar');
         bar.innerHTML = '';
+        // 提示车尾要合成到几级才能让车头升级
+        var tip = document.createElement('span');
+        tip.className = 'tail-tip';
+        tip.textContent = h.level < DC.MAX_LEVEL ? '车尾合成到 Lv' + h.level + ' 即升级 ▸' : '已是最高等级 ▸';
+        bar.appendChild(tip);
         g.tail.forEach(function (t, i) {
           var chip = document.createElement('span');
           chip.className = 'lv-chip' + (prev[i] !== String(t.level) ? ' pop' : '');

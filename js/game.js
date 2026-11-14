@@ -94,7 +94,7 @@
     this.engine = DC.Save.modLevel('engine');
     this.tire = DC.tireOf(save.tire);
     this.ignoreHold = this.holding;
-    this.countdown = 3.0;
+    this.countdown = save.totalRuns > 0 ? 2.0 : 3.0; // 再来一局时倒计时短一些
     this.lastCount = 4;
     this.autopilot = 0;
     this.boostTimer = 0;
@@ -332,7 +332,10 @@
     this.world.setThemeByLevel(h.level, false);
     if (DC.themeIndexOf(h.level) !== oldTheme) this.track.surface = this.surfaceKey();
     this.shake = 0.5;
-    this.notify('levelup', { level: h.level, bonus: bonus });
+    // 进入新档次：额外奖励
+    var tier = DC.tierOf(h.level), tierBonus = 0;
+    if (tier.from === h.level) { tierBonus = Math.round(DC.incomeOf(h.level) * 25 * this.turbo); this.stats.coins += tierBonus; }
+    this.notify('levelup', { level: h.level, bonus: bonus, newTier: tier.from === h.level ? tier : null, tierBonus: tierBonus });
   };
 
   Game.prototype.notify = function (type, data) {
