@@ -52,6 +52,7 @@
     <div class="menu-top">
       <div class="wallet"><span class="coin-icon"></span><span id="menuCoins">0</span></div>
       <div class="top-btns">
+        <button id="btnAch" class="icon-btn" title="成就">🏆<i id="achDot" class="dot hidden"></i></button>
         <button id="btnSettings" class="icon-btn" title="设置">⚙️</button>
         <button id="btnFullscreen" class="icon-btn" title="全屏">⛶</button>
       </div>
@@ -182,6 +183,15 @@
       <button id="btnTutorial" class="btn">重新开启新手引导</button>
       <button id="btnReset" class="btn danger">重置存档</button>
       <button id="btnSettingsClose" class="btn primary">完成</button>
+    </div>
+  </div>
+
+  <!-- 成就 -->
+  <div id="achModal" class="modal hidden">
+    <div class="modal-box wide">
+      <h2>成就 <small id="achCount" class="muted"></small></h2>
+      <div id="achList" class="ach-list"></div>
+      <button id="btnAchClose" class="btn primary">关闭</button>
     </div>
   </div>
 

@@ -80,6 +80,8 @@
       DC.Save.data.tutorialDone = false; DC.Save.save();
       self.toast('下一局会重新进行新手引导', '#ffd34d');
     });
+    click('btnAch', function () { self.renderAch(); $('achDot').classList.add('hidden'); self.openModal('achModal'); });
+    click('btnAchClose', function () { self.closeModal('achModal'); });
     click('confirmNo', function () { self.closeModal('confirmModal'); });
     click('confirmYes', function () { self.closeModal('confirmModal'); if (self.confirmFn) self.confirmFn(); });
 
@@ -181,7 +183,7 @@
   UI.prototype.openModal = function (id) { $(id).classList.remove('hidden'); };
   UI.prototype.closeModal = function (id) { $(id).classList.add('hidden'); };
   UI.prototype.anyModal = function () {
-    return ['pauseModal', 'overModal', 'settingsModal', 'confirmModal'].some(function (id) { return !$(id).classList.contains('hidden'); });
+    return ['pauseModal', 'overModal', 'settingsModal', 'confirmModal', 'achModal'].some(function (id) { return !$(id).classList.contains('hidden'); });
   };
   UI.prototype.confirm = function (title, text, fn) {
     $('confirmTitle').textContent = title; $('confirmText').textContent = text;
@@ -342,6 +344,7 @@
   };
 
   UI.prototype.showGameOver = function (st, rec, quit) {
+    this.announceAch(this.checkAchievements(st));
     $('overTitle').textContent = quit ? '本局结束' : '坠入悬崖！';
     $('overCoins').textContent = '+' + DC.fmt(st.coins);
     $('overTime').textContent = fmtTime(st.time);
@@ -490,6 +493,44 @@
     }
   };
 
+  // ---------- 成就 ----------
+  // run：刚结束的一局统计；返回新达成的成就列表并发放奖励
+  UI.prototype.checkAchievements = function (run) {
+    var save = DC.Save.data, got = [];
+    save.ach = save.ach || {}; save.records = save.records || {};
+    if (run) ['eaten', 'time', 'driftPoints', 'jumps', 'merges', 'coinsPicked'].forEach(function (k) {
+      if ((run[k] || 0) > (save.records[k] || 0)) save.records[k] = Math.floor(run[k]);
+    });
+    DC.ACHIEVEMENTS.forEach(function (a) {
+      if (save.ach[a.id]) return;
+      if (a.val(save, run) >= a.goal) { save.ach[a.id] = true; save.coins += a.reward; got.push(a); }
+    });
+    if (got.length) { DC.Save.save(); $('achDot').classList.remove('hidden'); this.refreshWallet(); }
+    return got;
+  };
+  UI.prototype.announceAch = function (got) {
+    var self = this;
+    got.slice(0, 3).forEach(function (a, i) {
+      setTimeout(function () { self.toast(a.icon + ' 成就达成：' + a.name + '<small>' + a.desc + ' · 奖励 ' + DC.fmt(a.reward) + ' 金币</small>', '#ffd34d'); DC.Audio.levelUp(); }, 300 + i * 900);
+    });
+  };
+  UI.prototype.renderAch = function () {
+    var save = DC.Save.data, list = $('achList'), done = 0;
+    list.innerHTML = '';
+    DC.ACHIEVEMENTS.forEach(function (a) {
+      var ok = !!(save.ach && save.ach[a.id]);
+      if (ok) done++;
+      var v = Math.min(a.goal, Math.floor(a.val(save, null)));
+      var el = document.createElement('div');
+      el.className = 'ach' + (ok ? ' done' : '');
+      el.innerHTML = '<div class="ach-icon">' + a.icon + '</div><div><div class="ach-name">' + a.name + '</div><div class="ach-desc">' + a.desc +
+        (ok ? '' : '（' + DC.fmt(v) + ' / ' + DC.fmt(a.goal) + '）') + '</div><div class="ach-bar"><i style="width:' + (ok ? 100 : v / a.goal * 100).toFixed(0) + '%"></i></div></div>' +
+        '<div class="ach-reward">' + (ok ? '✓ 已领取' : '<span class="coin-icon"></span>' + DC.fmt(a.reward)) + '</div>';
+      list.appendChild(el);
+    });
+    $('achCount').textContent = done + ' / ' + DC.ACHIEVEMENTS.length;
+  };
+
   // ---------- 商店 ----------
   UI.prototype.showShop = function (tab) {
     this.hideAll();
@@ -601,6 +642,7 @@
     }
     save.selected = level;
     DC.Save.save();
+    this.announceAch(this.checkAchievements(null));
     this.refreshWallet();
     this.renderCarGrid();
     this.focusCar(level);
@@ -670,6 +712,7 @@
     } else DC.Audio.click();
     save.tire = id;
     DC.Save.save();
+    this.announceAch(this.checkAchievements(null));
     this.renderTires();
     this.refreshWallet();
   };
@@ -697,6 +740,7 @@
     if (e.code === 'Escape' || e.code === 'KeyP') {
       if (!$('confirmModal').classList.contains('hidden')) { this.closeModal('confirmModal'); return true; }
       if (!$('settingsModal').classList.contains('hidden')) { this.closeModal('settingsModal'); return true; }
+      if (!$('achModal').classList.contains('hidden')) { this.closeModal('achModal'); return true; }
       if (g.state === 'paused') { this.resumeGame(); return true; }
       if (this.screen === 'hud' && (g.state === 'running' || g.state === 'countdown')) { this.pauseGame(); return true; }
       if (this.screen === 'shop' && e.code === 'Escape') { this.showMenu(); return true; }
@@ -704,7 +748,7 @@
     }
     if (e.code === 'Space' || e.code === 'Enter') {
       if (e.repeat) return true;
-      if (!$('confirmModal').classList.contains('hidden') || !$('settingsModal').classList.contains('hidden')) return e.code === 'Space';
+      if (!$('confirmModal').classList.contains('hidden') || !$('settingsModal').classList.contains('hidden') || !$('achModal').classList.contains('hidden')) return e.code === 'Space';
       if (this.screen === 'menu') { this.startGame(); return true; }
       if (g.state === 'paused') { this.resumeGame(); return true; }
       if (g.state === 'over' && performance.now() - (this.overShownAt || 0) > 600) { this.startGame(); return true; }

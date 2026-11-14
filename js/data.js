@@ -288,6 +288,36 @@ if (window.THREE && THREE.ColorManagement) THREE.ColorManagement.legacyMode = fa
     return idx;
   };
 
+  // ---------- 成就 ----------
+  // val(save, run) 返回当前进度；run 为刚结束的一局统计（可能为空）
+  function ach(id, icon, name, desc, goal, reward, val) { return { id: id, icon: icon, name: name, desc: desc, goal: goal, reward: reward, val: val }; }
+  var bestLv = function (s) { return s.best.level; };
+  var runOf = function (key) { return function (s, r) { return Math.max(s.records ? (s.records[key] || 0) : 0, r ? (r[key] || 0) : 0); }; };
+  DC.ACHIEVEMENTS = [
+    ach('lv10', '🚗', '初出茅庐', '车头升到 Lv10', 10, 300, bestLv),
+    ach('lv25', '🚌', '城市老司机', '车头升到 Lv25', 25, 3000, bestLv),
+    ach('lv50', '🏎️', '赛道新星', '车头升到 Lv50', 50, 60000, bestLv),
+    ach('lv75', '🔥', '超跑收割机', '车头升到 Lv75', 75, 1500000, bestLv),
+    ach('lv100', '👑', '传奇车神', '车头升到 Lv100', 100, 30000000, bestLv),
+    ach('eat20', '🍴', '开胃小菜', '单局吃到 20 辆车', 20, 200, runOf('eaten')),
+    ach('eat60', '🍽️', '大胃王', '单局吃到 60 辆车', 60, 2000, runOf('eaten')),
+    ach('eat150', '🐍', '贪吃长龙', '单局吃到 150 辆车', 150, 40000, runOf('eaten')),
+    ach('time60', '⏱️', '站稳脚跟', '单局坚持 1 分钟', 60, 200, runOf('time')),
+    ach('time180', '⏳', '稳如老狗', '单局坚持 3 分钟', 180, 3000, runOf('time')),
+    ach('time420', '🧘', '人车合一', '单局坚持 7 分钟', 420, 80000, runOf('time')),
+    ach('drift1k', '💨', '甩尾入门', '单局漂移得分 1,000', 1000, 300, runOf('driftPoints')),
+    ach('drift10k', '🌪️', '漂移高手', '单局漂移得分 10,000', 10000, 5000, runOf('driftPoints')),
+    ach('drift60k', '🌀', '秋名山车神', '单局漂移得分 60,000', 60000, 120000, runOf('driftPoints')),
+    ach('jump10', '🦘', '飞行员', '单局飞跃 10 次', 10, 500, runOf('jumps')),
+    ach('merge30', '🧬', '合成大师', '单局合成 30 次', 30, 1500, runOf('merges')),
+    ach('coin100', '🪙', '捡钱达人', '单局捡到 100 个金币', 100, 800, runOf('coinsPicked')),
+    ach('own5', '🅿️', '小车库', '拥有 5 辆车', 5, 500, function (s) { return s.owned.length; }),
+    ach('own20', '🏢', '私人车库', '拥有 20 辆车', 20, 20000, function (s) { return s.owned.length; }),
+    ach('own50', '🏛️', '汽车博物馆', '拥有 50 辆车', 50, 2000000, function (s) { return s.owned.length; }),
+    ach('tire4', '🛞', '轮胎控', '拥有 4 种轮胎', 4, 2000, function (s) { return s.tires.length; }),
+    ach('runs20', '🎮', '停不下来', '累计完成 20 局', 20, 1000, function (s) { return s.totalRuns; })
+  ];
+
   // ---------- 数字格式化 ----------
   DC.fmt = function (n) {
     n = Math.floor(n);

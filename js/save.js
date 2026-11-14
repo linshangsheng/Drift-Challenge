@@ -14,6 +14,8 @@
       best: { level: 1, time: 0, coins: 0, eaten: 0 },
       totalRuns: 0,
       tutorialDone: false,
+      ach: {},
+      records: {},
       settings: { sound: true, music: true, shadows: true, autoQuality: true, vibrate: true, guide: true }
     };
   }
