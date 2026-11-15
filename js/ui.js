@@ -315,15 +315,6 @@
       DC.vibrate(15);
     } else if (type === 'boost') {
       this.floater(this.game.head.x, this.game.head.y + 3, this.game.head.z, '加速！', '#3df5ff');
-    } else if (type === 'turbo') {
-      var hT = this.game.head;
-      this.floater(hT.x, hT.y + 3.4, hT.z, ['', '漂移喷射', '强力喷射！', '极限喷射！！'][d.stage] + ' +' + DC.fmt(d.bonus), DC.CHARGE_COLORS[d.stage]);
-      // 第一次喷射时说明一下规则
-      var sv = DC.Save.data;
-      if (!sv.tipTurbo && sv.tutorialDone && !this.game.coach) {
-        sv.tipTurbo = true; DC.Save.save();
-        this.toast('漂移喷射！<small>侧滑会积累蓄力，连续过弯火花从蓝变橙再变紫，出弯时自动喷射加速</small>', DC.CHARGE_COLORS[2]);
-      }
     } else if (type === 'slick') {
       this.floater(this.game.head.x, this.game.head.y + 3, this.game.head.z, '打滑！', '#c9a8ff');
     } else if (type === 'edge') {
@@ -485,14 +476,7 @@
     dm.style.setProperty('--mc', MULT_COLORS[Math.min(5, c.mult)]);
     $('dmMult').textContent = '×' + c.mult;
     $('dmPts').textContent = DC.fmt(c.points);
-    // 进度条显示漂移蓄力：蓝 → 橙 → 紫
-    var chg = g.charge || { t: 0, stage: 0 }, CT = DC.CHARGE_T;
-    var lo = chg.stage ? CT[chg.stage - 1] : 0, hi = chg.stage < 3 ? CT[chg.stage] : CT[2];
-    var prog = chg.stage >= 3 ? 1 : (chg.t - lo) / (hi - lo);
-    $('dmBar').style.width = (chg.t > 0 ? Math.max(4, Math.min(100, prog * 100)) : 0).toFixed(0) + '%';
-    $('dmBar').style.background = DC.CHARGE_COLORS[Math.min(3, chg.stage + (chg.stage < 3 ? 1 : 0))];
-    dm.classList.toggle('charged', chg.stage >= 1);
-    dm.style.setProperty('--cc', DC.CHARGE_COLORS[chg.stage]);
+    $('dmBar').style.width = Math.min(100, (g.driftAngle || 0) / 60 * 100).toFixed(0) + '%';
     dm.style.opacity = c.drifting ? 1 : Math.max(0.35, 1 - c.idle / 1.6);
   };
 
@@ -509,7 +493,6 @@
     var top = DC.speedOf(h.level);
     var k = on ? Math.max(0, Math.min(1, (h.v / top - 0.8) * 4)) * (0.35 + 0.65 * Math.min(1, top / 60)) : 0;
     if (g.boostTimer > 0) k = Math.max(k, 1);
-    else if (g.turboTimer > 0) k = Math.max(k, 0.55 + 0.15 * (g.turboStage || 1));
     this.slK = (this.slK || 0) + (k - (this.slK || 0)) * Math.min(1, dt * 4);
     var W = window.innerWidth, H = window.innerHeight, dpr = Math.min(window.devicePixelRatio || 1, 1.5);
     if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
@@ -539,7 +522,7 @@
   UI.prototype.checkAchievements = function (run) {
     var save = DC.Save.data, got = [];
     save.ach = save.ach || {}; save.records = save.records || {};
-    if (run) ['eaten', 'time', 'driftPoints', 'jumps', 'merges', 'coinsPicked', 'airBest', 'turbos', 'turbo3', 'grazes'].forEach(function (k) {
+    if (run) ['eaten', 'time', 'driftPoints', 'jumps', 'merges', 'coinsPicked', 'airBest', 'grazes', 'maxMult', 'bestCombo'].forEach(function (k) {
       if ((run[k] || 0) > (save.records[k] || 0)) save.records[k] = Math.floor(run[k]);
     });
     DC.ACHIEVEMENTS.forEach(function (a) {

@@ -191,7 +191,6 @@ body.shop-mode #toasts { left: 26%; width: 46vw; }
 .drift-meter .dm-pts { font-size: 34px; font-weight: 900; font-style: italic; color: var(--mc, #fff); line-height: 1.05; }
 .drift-meter .dm-bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,.18); overflow: hidden; margin: 4px auto 0; width: 160px; }
 .drift-meter .dm-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ffd34d, #ff4d5e); border-radius: 3px; }
-.drift-meter.charged .dm-bar { box-shadow: 0 0 10px var(--cc, #fff); height: 8px; }
 .drift-meter.pulse .dm-top b { animation: pop .3s ease; }
 .drift-meter.bank .dm-pts { animation: bankFly .9s ease forwards; }
 .drift-meter.lost { --mc: #ff5d6c; }

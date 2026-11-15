@@ -1,4 +1,4 @@
-/* Z 字形悬空赛道：宽窄变化、弯角变化（缓弯到发卡弯）、上下坡、飞跃坡、大跳台、断桥、起伏坡、加速带、打滑区 */
+/* Z 字形悬空赛道：宽窄变化、弯角变化（缓弯到发卡弯）、弯道处的圆形漂移平台、上下坡、飞跃坡、大跳台、断桥、起伏坡、加速带、打滑区 */
 (function (DC) {
   'use strict';
   var T = THREE;
@@ -93,16 +93,7 @@
         x.fillStyle = g; x.beginPath(); x.arc(px, py, r, 0, Math.PI * 2); x.fill();
       }
     }), transparent: true, roughness: 0.05, metalness: 0.6, depthWrite: false }), -3);
-    // 路边参照物：急弯导向牌、加速带拱门、跳台旗杆
-    this.chevronMat = new T.MeshBasicMaterial({ map: canvasTex(128, 64, function (x, w, h) {
-      x.fillStyle = '#d81e2c'; x.fillRect(0, 0, w, h);
-      x.strokeStyle = '#ffffff'; x.lineWidth = 13; x.lineJoin = 'miter';
-      for (var i = 0; i < 2; i++) { x.beginPath(); x.moveTo(26 + i * 46, 8); x.lineTo(56 + i * 46, 32); x.lineTo(26 + i * 46, 56); x.stroke(); }
-    }), toneMapped: false }); // 只画正面：从背后看不到牌子，也就不会看到反向的箭头
-    this.chevronGeoR = new T.PlaneGeometry(2.5, 1.25);
-    this.chevronGeoL = new T.PlaneGeometry(2.5, 1.25);
-    var cuv = this.chevronGeoL.attributes.uv;
-    for (var ci = 0; ci < cuv.count; ci++) cuv.setX(ci, 1 - cuv.getX(ci));
+    // 路边参照物：加速带拱门、跳台旗杆
     this.gateMat = new T.MeshBasicMaterial({ color: '#58f2ff', toneMapped: false });
     this.flagMat = new T.MeshBasicMaterial({ color: '#ffcc00', toneMapped: false });
     this.poleMat = new T.MeshStandardMaterial({ color: '#d9dde3', roughness: 0.5, metalness: 0.4 });
@@ -138,7 +129,8 @@
     this.surface = surface || 'asphalt';
     this.trend = 1; this.trendLeft = 3; this.chicane = 0;
     var w = DC.trackWidthOf(level);
-    this.addSegment({ ax: 0, az: 0, angle: RIGHT, len: 75, w: w, feat: null, first: true, cum: 0, y0: 0, y1: 0, eS: w / 2, nAngle: LEFT, nW: w });
+    this.addSegment({ ax: 0, az: 0, angle: RIGHT, len: 75, w: w, feat: null, first: true, cum: 0, y0: 0, y1: 0, eS: w / 2, nAngle: LEFT, nW: w,
+      rS: 0, rE: plazaR(w, w, Math.PI / 2, w) });
   };
 
   // ---------- 路段高度 ----------
@@ -174,7 +166,8 @@
     return f.type === 'boost' || f.type === 'slick' ? f.type : null;
   };
 
-  // o: { ax, az, angle, len, w, feat, first, cum, y0, y1, eS, nAngle, nW }
+  // o: { ax, az, angle, len, w, feat, first, cum, y0, y1, eS, nAngle, nW, rS, rE }
+  // rS / rE：起点、终点弯道处圆形漂移平台的半径（0 表示没有）
   // nAngle / nW 是下一段的方向和宽度：弯角的几何（外角延伸多少）取决于前后两段，所以要提前定好
   Track.prototype.addSegment = function (o) {
     var idx = this.base + this.segs.length;
@@ -182,11 +175,12 @@
     var s = {
       idx: idx, ax: o.ax, az: o.az, angle: o.angle, dx: dx, dz: dz, len: o.len, w: o.w,
       ex: o.ax + dx * o.len, ez: o.az + dz * o.len, first: !!o.first, feat: o.feat, cum: o.cum,
-      y0: o.y0, y1: o.y1, eS: o.eS, nAngle: o.nAngle, nW: o.nW
+      y0: o.y0, y1: o.y1, eS: o.eS, nAngle: o.nAngle, nW: o.nW, rS: o.rS || 0, rE: o.rE || 0
     };
     s.turn = Math.abs(o.nAngle - o.angle);          // 这一段末端的转角
     s.eE = cornerExt(o.w / 2, o.nW / 2, s.turn);    // 末端向前延伸的长度
-    s.m0 = s.eS + 2; s.m1 = s.len - s.eE - 2;       // 坡道只在两个弯之间
+    s.cS = Math.max(s.eS, s.rS); s.cE = Math.max(s.eE, s.rE); // 两端弯道（含平台）占用的长度
+    s.m0 = s.cS + 2; s.m1 = s.len - s.cE - 2;       // 坡道只在两个弯之间
     s.obj = this.buildMesh(s);
     this.group.add(s.obj);
     this.segs.push(s);
@@ -222,8 +216,18 @@
   // 弯越急侧滑越远（约与 1 - cosθ 成正比），急弯两侧的路要够宽、够长才过得去
   function widthK(turn) {
     var rmax = 1 + Math.sqrt(Math.max(0, 1 - 0.85 * Math.sin(turn)));
-    return 2 * (DC.SLIDE_RATIO || 0.88) * (1 - Math.cos(turn)) / (rmax * rmax) * 0.9;
+    return 2 * 0.88 * (1 - Math.cos(turn)) / (rmax * rmax) * 0.9;
   }
+  // 弯道平台半径：要盖住两段路在弯角处的方形交汇区，并且大到能容下这个弯的侧滑
+  // （侧滑距离约为 SLIDE_RATIO × 路宽 ×（1 − cos 转角），见 game.js 的下压力校准）
+  function plazaR(w, nW, turn, baseW) {
+    var hw = w / 2, hn = nW / 2;
+    var eE = cornerExt(hw, hn, turn), eSn = cornerExt(hn, hw, turn);
+    var cover = Math.max(Math.hypot(eE, hw), Math.hypot(eSn, hn)) + 0.4;
+    var slide = (DC.SLIDE_RATIO || 1.5) * baseW * (1 - Math.cos(turn));
+    return Math.max(cover, (DC.PLAZA_K || 0.8) * slide + 1);
+  }
+  DC.plazaR = plazaR;
   function airTime(vy, drop) { return (vy + Math.sqrt(vy * vy + 60 * drop)) / 30; }
 
   // ---------- 生成 ----------
@@ -247,15 +251,16 @@
       var turn = Math.abs(nAngle - angle);
       nW = Math.max(nW, baseW * widthK(turn));
       var eE = cornerExt(hw, nW / 2, turn);
+      var rS = last.rE || 0, rE = plazaR(w, nW, turn, baseW);
       // 路段长度要容得下前一个弯滑完、后一个弯开始滑
-      var slideLen = (DC.SLIDE_RATIO || 0.88) * baseW * (Math.tan(last.turn / 2) + Math.tan(turn / 2));
-      var minLen = Math.max(slideLen, eS + eE + w * 0.9);
+      var slideLen = (DC.SLIDE_RATIO || 1.5) * baseW * ((1 - Math.cos(last.turn)) + (1 - Math.cos(turn)));
+      var minLen = Math.max(slideLen, Math.max(eS, rS) + Math.max(eE, rE) + w * 0.6);
       // 长短变化
       var t = inCh ? 0.5 : (Math.random() < 0.2 ? rand(2.2, 3.2) : rand(0.8 - 0.25 * p, 2.1 - 0.6 * p));
       var len = Math.max(minLen, v * t);
       var feat = null;
       if (n > 2 && !inCh && !last.feat && Math.random() < Math.min(0.5, 0.2 + 0.35 * p + (level > 1 ? 0.05 : 0))) {
-        feat = this.makeFeature(level, v, w, p, eS, eE, last.y1);
+        feat = this.makeFeature(level, v, w, p, Math.max(eS, rS), Math.max(eE, rE), last.y1);
         if (feat) len = Math.max(len, feat.minLen);
       }
       // 限制赛道的横向活动范围：向外的路段到边界就截短，放不下的特殊路段取消
@@ -269,7 +274,7 @@
       var y0 = last.y1, y1 = y0;
       if (feat && (feat.type === 'jump' || feat.type === 'gap')) y1 = y0 - (feat.drop || 0);
       else if (n > 3 && (!feat || feat.type !== 'hill')) {
-        var Lp = len - eS - eE - 4, tt = Lp / v;
+        var Lp = len - Math.max(eS, rS) - Math.max(eE, rE) - 4, tt = Lp / v;
         // 坡顶的曲率不能让车在弯前意外腾空，所以路段越短（按行驶时间算）坡越小
         var dyMax = Math.min(9, 0.16 * Lp, 2.2 * tt * tt);
         // 高度有走势：连续几段下坡（山道俯冲）或连续上坡，到了范围边界就掉头
@@ -286,7 +291,7 @@
         }
       }
       this.addSegment({ ax: last.ex, az: last.ez, angle: angle, len: len, w: w, feat: feat, first: false, cum: last.cum + last.len,
-        y0: y0, y1: y1, eS: eS, nAngle: nAngle, nW: nW });
+        y0: y0, y1: y1, eS: eS, nAngle: nAngle, nW: nW, rS: rS, rE: rE });
     }
   };
 
@@ -317,10 +322,11 @@
       var vy = 1.2 * v * 1.6 * f.H / Lr;
       f.minLen = f.b + 1.2 * v * airTime(vy, f.drop) + v * 0.5 + tail;
     } else if (type === 'boost') {
-      f.a = a0; f.b = f.a + 7; f.end = f.b; f.minLen = f.b + tail + w * 0.5 + v * 0.3;
+      // 加速带后面要留出足够的距离，加速结束后再进弯
+      f.a = a0; f.b = f.a + 7; f.end = f.b; f.minLen = f.b + tail + w * 0.8 + v * 1.9;
     } else {
       // 油污放在上一个弯滑完之后，不让车还在侧滑时就压上去
-      f.a = a0 + v * 0.35; f.b = f.a + Math.max(12, v * 0.7); f.end = f.b; f.minLen = f.b + tail + w * 0.5 + v * 0.2;
+      f.a = a0 + v * 0.35; f.b = f.a + Math.max(12, v * 0.7); f.end = f.b; f.minLen = f.b + tail + w * 1.6 + v * 0.5;
     }
     return f;
   };
@@ -433,22 +439,26 @@
     function inter(a, b, fn) { pieces.forEach(function (pc) { var x = Math.max(a, pc[0]), y = Math.min(b, pc[1]); if (y > x) fn(x, y); }); }
     pieces.forEach(function (pc) { g.add(self.roadPiece(s, pc[0], pc[1])); });
 
+    // 两端平台范围内不画边线：横向 lat 处，起点平台盖到 along = √(rS² − lat²)，终点平台从 L − √(rE² − lat²) 开始
+    function clipS(lat) { return s.rS > Math.abs(lat) ? Math.sqrt(s.rS * s.rS - lat * lat) : -1e9; }
+    function clipE(lat) { return s.rE > Math.abs(lat) ? L - Math.sqrt(s.rE * s.rE - lat * lat) : 1e9; }
     // 边线：内侧缩短、外侧延伸
     var endTurnLeft = s.nAngle > s.angle;
     var em = this.world.mats.edge;
     for (var side = -1; side <= 1; side += 2) {
-      var isLeft = side > 0;
+      var isLeft = side > 0, lat0 = side * (hw - 0.25);
       var startOuter = s.first ? true : (isLeft === endTurnLeft);
       var endOuter = isLeft !== endTurnLeft;
-      var z0 = startOuter ? -eS : eS, z1 = endOuter ? L + eE : L - eE;
-      inter(z0, z1, function (a, b) { var r = self.ribbon(s, side * (hw - 0.25), 0.35, a, b, 0.03, em); if (r) g.add(r); });
+      var z0 = Math.max(startOuter ? -eS : eS, clipS(lat0)), z1 = Math.min(endOuter ? L + eE : L - eE, clipE(lat0));
+      inter(z0, z1, function (a, b) { var r = self.ribbon(s, lat0, 0.35, a, b, 0.03, em); if (r) g.add(r); });
     }
     // 中线
-    inter(eS, L - eE, function (a, b) { var r = self.ribbon(s, 0, 0.25, a, b, 0.015, self.dashMat, 5); if (r) g.add(r); });
+    inter(Math.max(eS, s.rS), L - Math.max(eE, s.rE), function (a, b) { var r = self.ribbon(s, 0, 0.25, a, b, 0.015, self.dashMat, 5); if (r) g.add(r); });
+    if (s.rE > 0) g.add(this.plazaMesh(s));
 
-    // 弯道外侧路肩
+    // 弯道外侧路肩（有平台时由平台外沿的路肩代替）
     var outerSide = endTurnLeft ? -1 : 1;
-    var curbA = this.ribbon(s, outerSide * (hw - 0.5), 0.9, L - eE, L + eE, 0.02, this.curbMat, 2);
+    var curbA = s.rE > 0 ? null : this.ribbon(s, outerSide * (hw - 0.5), 0.9, L - eE, L + eE, 0.02, this.curbMat, 2);
     if (curbA) {
       // 让红白块沿路肩方向排列
       var uvA = curbA.geometry.attributes.uv;
@@ -456,7 +466,7 @@
       g.add(curbA);
     }
     // 末端的横向路肩：转角不小于 90° 时，这条边才是平台的外沿
-    if (s.turn > 88 * DEG) {
+    if (s.turn > 88 * DEG && !(s.rE > 0)) {
       var cg = new T.PlaneGeometry(w, 0.9);
       cg.rotateX(-Math.PI / 2);
       var uvc = cg.attributes.uv;
@@ -504,7 +514,7 @@
 
     // 岩柱
     var pil = new T.Mesh(this.pillarGeo, this.world.mats.rock);
-    pil.scale.set(w * 0.62, rand(18, 40), w * 0.62);
+    pil.scale.set(Math.max(w * 0.62, s.rE * 0.85), rand(18, 40), Math.max(w * 0.62, s.rE * 0.85));
     pil.position.set(0, s.y1 - THICK, L);
     pil.rotation.y = Math.random() * 3;
     g.add(pil);
@@ -519,13 +529,13 @@
   };
 
   // 路边参照物（只是装饰，不参与碰撞）：飞快掠过的路沿反光桩带来速度感，
-  // 急弯外侧立导向牌，加速带上方有拱门，跳台两侧有旗杆
+  // 加速带上方有拱门，跳台两侧有旗杆
   Track.prototype.roadside = function (s, g) {
     var w = s.w, hw = w / 2, L = s.len, f = s.feat, self = this;
     var posts = [], poles = [];
     // 反光桩：贴在路沿外侧
     var pk = clamp(w / 13, 1, 1.8); // 路越宽镜头越远，桩子相应加大
-    var step = 9 * pk, a0 = s.eS + 3, a1 = L - s.eE - 3, n = Math.max(0, Math.floor((a1 - a0) / step));
+    var step = 9 * pk, a0 = s.cS + 2, a1 = L - s.cE - 2, n = Math.max(0, Math.floor((a1 - a0) / step));
     for (var i = 0; i <= n; i++) {
       var al = n ? a0 + (a1 - a0) * i / n : (a0 + a1) / 2;
       if (a1 < a0) break;
@@ -536,19 +546,6 @@
     }
     if (posts.length) g.add(boxMesh(posts, this.world.mats.edge));
 
-    // 急弯导向牌：立在弯道尽头的外沿，箭头指向转弯方向
-    if (s.turn > 97 * DEG) {
-      var left = s.nAngle > s.angle, k = clamp(w / 13, 1, 1.9), cnt = s.turn > 108 * DEG ? 4 : 3;
-      for (var c = 0; c < cnt; c++) {
-        var px = (c - (cnt - 1) / 2) * 2.9 * k;
-        var pm = new T.Mesh(left ? this.chevronGeoL : this.chevronGeoR, this.chevronMat);
-        pm.rotation.y = Math.PI;
-        pm.scale.set(k, k, 1);
-        pm.position.set(px, s.y1 + 0.75 + 0.62 * k, L + s.eE + 0.25);
-        g.add(pm);
-        box(poles, px, s.y1 + 0.35, L + s.eE + 0.3, 0.14, 0.9, 0.14);
-      }
-    }
     // 加速带拱门
     if (f && f.type === 'boost') {
       var gate = [], gy = this.heightAt(s, f.a) || s.y0, gh = 7.2;
@@ -568,8 +565,8 @@
       g.add(boxMesh(flags, this.flagMat));
     }
     // 岩石拱门：长直路上偶尔出现，从中间穿过去
-    if (!f && !s.first && L - s.eS - s.eE > 46 && s.y1 === s.y0 && Math.random() < 0.3) {
-      var arch = [], az = s.eS + (L - s.eS - s.eE) * rand(0.4, 0.6), ah = 9.5 + w * 0.12, ax = hw + 1.6, by = s.y0;
+    if (!f && !s.first && L - s.cS - s.cE > 46 && s.y1 === s.y0 && Math.random() < 0.3) {
+      var arch = [], az = s.cS + (L - s.cS - s.cE) * rand(0.4, 0.6), ah = 9.5 + w * 0.12, ax = hw + 1.6, by = s.y0;
       for (var sd2 = -1; sd2 <= 1; sd2 += 2) {
         box(arch, sd2 * (ax + 0.9), by + ah * 0.25 - 2, az, 3.4, ah * 0.5 + 4, 4.2);
         box(arch, sd2 * (ax + 0.5), by + ah * 0.7, az + 0.3, 2.6, ah * 0.5, 3.4);
@@ -590,6 +587,80 @@
     if (poles.length) g.add(boxMesh(poles, this.poleMat));
   };
 
+  // 弯道处的圆形漂移平台（放在本段末端，局部坐标 along = L）
+  Track.prototype.plazaMesh = function (s) {
+    var g = new T.Group(), r = s.rE, L = s.len, y = s.y1, N = 56, i;
+    var top = [], side = [], uvTop = [];
+    for (i = 0; i < N; i++) {
+      var a0 = i / N * Math.PI * 2, a1 = (i + 1) / N * Math.PI * 2;
+      var x0 = Math.sin(a0) * r, z0 = Math.cos(a0) * r, x1 = Math.sin(a1) * r, z1 = Math.cos(a1) * r;
+      var yt = y - 0.012; // 略低于路面，避免与路面重叠闪烁
+      top.push(0, yt, L, x0, yt, L + z0, x1, yt, L + z1);
+      uvTop.push(0, L / UVS, x0 / UVS, (L + z0) / UVS, x1 / UVS, (L + z1) / UVS);
+      quad(side, [x0, yt - THICK, L + z0], [x1, yt - THICK, L + z1], [x1, yt, L + z1], [x0, yt, L + z0]);
+      side.push(0, yt - THICK, L, x1, yt - THICK, L + z1, x0, yt - THICK, L + z0);
+    }
+    var geo = new T.BufferGeometry(), all = top.concat(side);
+    geo.setAttribute('position', new T.Float32BufferAttribute(all, 3));
+    var uv = new Float32Array(all.length / 3 * 2); uv.set(uvTop, 0);
+    geo.setAttribute('uv', new T.BufferAttribute(uv, 2));
+    geo.addGroup(0, top.length / 3, 0); geo.addGroup(top.length / 3, side.length / 3, 1);
+    geo.computeVertexNormals();
+    var mesh = new T.Mesh(geo, s.idx % 2 ? this.topMatsB : this.topMatsA);
+    mesh.receiveShadow = true; mesh.userData.ownGeo = true;
+    g.add(mesh);
+    // 外沿：只在不与两段路面重叠的弧段上画发光边线和红白路肩
+    var hw = s.w / 2, hn = s.nW / 2, d = s.nAngle - s.angle, sd = Math.sin(d), cd = Math.cos(d);
+    var eSn = cornerExt(hn, hw, s.turn);
+    function onRoad(px, pz) {
+      if (pz <= L + s.eE && Math.abs(px) <= hw) return true;
+      var al = px * sd + (pz - L) * cd, lt = px * cd - (pz - L) * sd;
+      return al >= -eSn && Math.abs(lt) <= hn;
+    }
+    var M = 160, vis = [];
+    for (i = 0; i < M; i++) { var a = i / M * Math.PI * 2; vis.push(!onRoad(Math.sin(a) * (r - 0.15), L + Math.cos(a) * (r - 0.15))); }
+    var start = vis.indexOf(false);
+    if (start < 0) start = 0;
+    var self = this, arcs = [], cur = null;
+    for (var k = 1; k <= M; k++) {
+      var j = (start + k) % M;
+      if (vis[j]) { if (!cur) cur = [j, 0]; cur[1]++; } else if (cur) { arcs.push(cur); cur = null; }
+    }
+    if (cur) arcs.push(cur);
+    arcs.forEach(function (arc) {
+      var a0 = arc[0] / M * Math.PI * 2, a1 = (arc[0] + arc[1]) / M * Math.PI * 2;
+      var e = self.arcStrip(L, y + 0.03, r - 0.42, r - 0.08, a0, a1, self.world.mats.edge, 0);
+      var c = self.arcStrip(L, y + 0.02, r - 1.25, r - 0.35, a0, a1, self.curbMat, 2);
+      g.add(e); g.add(c);
+    });
+    return g;
+  };
+  // 圆弧条带（平台外沿的边线、路肩）
+  Track.prototype.arcStrip = function (L, y, r0, r1, a0, a1, mat, uvLen) {
+    var n = Math.max(2, Math.ceil((a1 - a0) * r1 / 1.2)), pos = [], uv = [], acc = 0;
+    for (var i = 0; i < n; i++) {
+      var b0 = a0 + (a1 - a0) * i / n, b1 = a0 + (a1 - a0) * (i + 1) / n;
+      var p00 = [Math.sin(b0) * r0, y, L + Math.cos(b0) * r0], p01 = [Math.sin(b0) * r1, y, L + Math.cos(b0) * r1];
+      var p10 = [Math.sin(b1) * r0, y, L + Math.cos(b1) * r0], p11 = [Math.sin(b1) * r1, y, L + Math.cos(b1) * r1];
+      pos.push(p00[0], p00[1], p00[2], p11[0], p11[1], p11[2], p01[0], p01[1], p01[2], p00[0], p00[1], p00[2], p10[0], p10[1], p10[2], p11[0], p11[1], p11[2]);
+      var u0 = uvLen ? acc / uvLen : 0; acc += (b1 - b0) * r1; var u1 = uvLen ? acc / uvLen : 1;
+      uv.push(u0, 0, u1, 1, u0, 1, u0, 0, u1, 0, u1, 1);
+    }
+    var geo = new T.BufferGeometry();
+    geo.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new T.Float32BufferAttribute(uv, 2));
+    geo.computeVertexNormals();
+    // 保证朝上
+    if (geo.attributes.normal.getY(0) < 0) {
+      var pa = geo.attributes.position;
+      for (var q = 0; q < pa.count; q += 3) { var tx = pa.getX(q + 1), ty = pa.getY(q + 1), tz = pa.getZ(q + 1); pa.setXYZ(q + 1, pa.getX(q + 2), pa.getY(q + 2), pa.getZ(q + 2)); pa.setXYZ(q + 2, tx, ty, tz); }
+      geo.computeVertexNormals();
+    }
+    var m = new T.Mesh(geo, mat);
+    m.userData.ownGeo = true; m.receiveShadow = true;
+    return m;
+  };
+
   // ---------- 查询 ----------
   Track.prototype.localOf = function (s, x, z) {
     var rx = x - s.ax, rz = z - s.az;
@@ -605,12 +676,21 @@
     if (s.feat && s.feat.type === 'gap' && along > s.feat.b && along < s.feat.c) return false;
     return true;
   };
+  // 点是否在某段末端的弯道平台上
+  Track.prototype.onPlaza = function (s, x, z, tol) {
+    if (!(s.rE > 0)) return false;
+    var dx = x - s.ex, dz = z - s.ez, r = s.rE + (tol || 0);
+    return dx * dx + dz * dz <= r * r;
+  };
   Track.prototype.locate = function (x, z, hint, tol) {
-    var best = -1;
-    for (var i = Math.max(this.base, hint - 1); i <= Math.min(this.lastIndex(), hint + 3); i++) {
+    var best = -1, lo = Math.max(this.base, hint - 1), hi = Math.min(this.lastIndex(), hint + 3), i;
+    for (i = lo; i <= hi; i++) {
       if (this.contains(this.get(i), x, z, tol)) { best = i; if (i >= hint) break; }
     }
-    return best;
+    if (best >= 0) return best;
+    // 只在平台上：算作平台之后的那一段（出弯方向）
+    for (i = lo; i <= hi; i++) if (this.onPlaza(this.get(i), x, z, tol)) return Math.min(i + 1, this.lastIndex());
+    return -1;
   };
   // 地面信息：{seg, along, lat, h, effect}；不在路面上返回 null
   Track.prototype.groundAt = function (x, z, hint) {

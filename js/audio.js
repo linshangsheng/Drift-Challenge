@@ -1,6 +1,7 @@
-/* 合成音效（WebAudio，不依赖外部素材）
- * 引擎：按后轮转速模拟换挡，空转时转速上扬
- * 轮胎：接近抓地极限时的黏滑尖啸 + 与滑动速度成正比的摩擦噪声，不同路面音色不同
+/* 音效（WebAudio）
+ * 引擎：合成，按后轮转速模拟换挡，空转时转速上扬
+ * 轮胎尖啸：真实录音循环播放（js/skidSound.js，CC0），音调和音量随滑动速度变化，两路错开播放避免听出循环
+ * 路面摩擦噪声：合成，与滑动速度成正比，不同路面音色不同（雪地、沙地主要是这个声音）
  */
 (function (DC) {
   'use strict';
@@ -8,14 +9,46 @@
   var eng = null, squeal = null, scrub = null, roll = null;
   var enabled = true;
 
-  // 各路面的声音特征：squeal 尖啸比例；scrub 摩擦噪声的滤波中心/类型/Q；grain 颗粒感
+  // 各路面的声音特征：squeal 尖啸音量比例、rate 尖啸音调、lp 尖啸的低通（湿路发闷）；
+  // scrub 摩擦噪声的滤波中心/类型/Q；grain 颗粒感
   var SURF_SOUND = {
-    asphalt: { squeal: 1.0, f: 950, type: 'bandpass', q: 1.1, grain: 0.0, rollF: 420, scrub: 0.2 },
-    wet: { squeal: 0.35, f: 2100, type: 'bandpass', q: 0.9, grain: 0.15, rollF: 1100, scrub: 0.15 },
-    sand: { squeal: 0.1, f: 1300, type: 'bandpass', q: 0.9, grain: 0.75, rollF: 650, scrub: 0.17 },
-    snow: { squeal: 0.0, f: 420, type: 'lowpass', q: 0.9, grain: 0.85, rollF: 260, scrub: 0.34 },
-    ice: { squeal: 0.25, f: 3000, type: 'bandpass', q: 1.2, grain: 0.3, rollF: 1500, scrub: 0.11 }
+    asphalt: { squeal: 1.0, rate: 1.0, lp: 9000, f: 950, type: 'bandpass', q: 1.1, grain: 0.0, rollF: 420, scrub: 0.1 },
+    wet: { squeal: 0.4, rate: 0.93, lp: 2800, f: 2100, type: 'bandpass', q: 0.9, grain: 0.15, rollF: 1100, scrub: 0.16 },
+    sand: { squeal: 0.08, rate: 0.85, lp: 2200, f: 1300, type: 'bandpass', q: 0.9, grain: 0.75, rollF: 650, scrub: 0.19 },
+    snow: { squeal: 0.0, rate: 0.8, lp: 1500, f: 420, type: 'lowpass', q: 0.9, grain: 0.85, rollF: 260, scrub: 0.34 },
+    ice: { squeal: 0.28, rate: 1.22, lp: 7000, f: 3000, type: 'bandpass', q: 1.2, grain: 0.3, rollF: 1500, scrub: 0.11 }
   };
+
+  // ---- 轮胎尖啸录音：解析内嵌的 WAV ----
+  var skidPCM = null; // { sr, data: Float32Array }
+  function skidSamples() {
+    if (skidPCM !== null) return skidPCM;
+    skidPCM = false;
+    try {
+      var b64 = DC.SKID_WAV;
+      if (!b64) return skidPCM;
+      var bin = atob(b64), n = bin.length, bytes = new Uint8Array(n);
+      for (var i = 0; i < n; i++) bytes[i] = bin.charCodeAt(i);
+      var dv = new DataView(bytes.buffer), sr = dv.getUint32(24, true), p = 12, off = -1, len = 0;
+      while (p + 8 <= n) {
+        var id = String.fromCharCode(bytes[p], bytes[p + 1], bytes[p + 2], bytes[p + 3]), sz = dv.getUint32(p + 4, true);
+        if (id === 'data') { off = p + 8; len = sz; break; }
+        p += 8 + sz + (sz & 1);
+      }
+      if (off < 0) return skidPCM;
+      var cnt = Math.floor(Math.min(len, n - off) / 2), data = new Float32Array(cnt);
+      for (var j = 0; j < cnt; j++) data[j] = dv.getInt16(off + j * 2, true) / 32768;
+      skidPCM = { sr: sr, data: data };
+    } catch (e) { skidPCM = false; }
+    return skidPCM;
+  }
+  function skidBuffer() {
+    var pcm = skidSamples();
+    if (!pcm) return null;
+    var buf = ctx.createBuffer(1, pcm.data.length, pcm.sr);
+    buf.getChannelData(0).set(pcm.data);
+    return buf;
+  }
 
   function ensure() {
     if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return true; }
@@ -63,23 +96,26 @@
     wn.connect(wf); wf.connect(wg); wg.connect(eg);
     eng = { o1: o1, o2: o2, o3: o3, g1: g1, g2: g2, g3: g3, lp: lp, g: eg, gear: 1, lope: lope, lopeG: lopeG, wf: wf, wg: wg, applied: null };
 
-    // ---- 轮胎尖啸：两个失谐振荡器，频率被低频噪声扰动（黏滑），并做快速颤动 ----
-    var s1 = ctx.createOscillator(); s1.type = 'sawtooth'; s1.frequency.value = 900;
-    var s2 = ctx.createOscillator(); s2.type = 'triangle'; s2.frequency.value = 1340;
-    var jitter = noiseSrc();
-    var jlp = ctx.createBiquadFilter(); jlp.type = 'lowpass'; jlp.frequency.value = 25;
-    var jg = ctx.createGain(); jg.gain.value = 160;
-    jitter.connect(jlp); jlp.connect(jg); jg.connect(s1.frequency); jg.connect(s2.frequency);
-    var trem = ctx.createOscillator(); trem.frequency.value = 38;
-    var tg = ctx.createGain(); tg.gain.value = 0.35;
-    var sMix = ctx.createGain(); sMix.gain.value = 0.6;
-    trem.connect(tg); tg.connect(sMix.gain);
-    var sbp = ctx.createBiquadFilter(); sbp.type = 'bandpass'; sbp.frequency.value = 1100; sbp.Q.value = 3;
+    // ---- 轮胎尖啸：真实录音，两路错开起点、略微失谐，避免听出循环 ----
     var sg = ctx.createGain(); sg.gain.value = 0;
-    var s2g = ctx.createGain(); s2g.gain.value = 0.5;
-    s1.connect(sMix); s2.connect(s2g); s2g.connect(sMix); sMix.connect(sbp); sbp.connect(sg); sg.connect(master);
-    s1.start(); s2.start(); trem.start();
-    squeal = { s1: s1, s2: s2, bp: sbp, g: sg, trem: trem };
+    var slp = ctx.createBiquadFilter(); slp.type = 'lowpass'; slp.frequency.value = 9000; slp.Q.value = 0.5;
+    slp.connect(sg); sg.connect(master);
+    var buf = skidBuffer(), voices = [];
+    if (buf) {
+      [[0, 0.62, 1], [buf.duration * 0.47, 0.45, 1.035]].forEach(function (v) {
+        var src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+        var vg = ctx.createGain(); vg.gain.value = v[1];
+        src.connect(vg); vg.connect(slp);
+        src.start(0, v[0]);
+        voices.push({ src: src, k: v[2] });
+      });
+    } else {
+      // 没有录音时的备用：合成尖啸
+      var s1 = ctx.createOscillator(); s1.type = 'sawtooth'; s1.frequency.value = 1150;
+      var sbp = ctx.createBiquadFilter(); sbp.type = 'bandpass'; sbp.frequency.value = 1250; sbp.Q.value = 4;
+      s1.connect(sbp); sbp.connect(slp); s1.start();
+    }
+    squeal = { g: sg, lp: slp, voices: voices, buf: buf };
 
     // ---- 滑动摩擦噪声（随路面变音色，带颗粒感调制） ----
     var nsrc = noiseSrc();
@@ -129,11 +165,6 @@
   }
 
   // 尖啸强度：接近峰值滑移最响，完全滑动后减弱但仍有
-  function squealCurve(x) {
-    if (x < 0.75) return 0;
-    if (x < 1.3) return (x - 0.75) / 0.55;
-    return 0.45 + 0.55 * Math.exp(-(x - 1.3) * 0.9);
-  }
 
   var curSurf = null;
   // 各类引擎的音色：w 波形，g 三个振荡器的音量，h 另外两个振荡器相对基频的倍数，
@@ -333,14 +364,14 @@
       }
       var slip = o.slip || 0, slideV = o.slideV || 0;
       var load = Math.min(1, 0.4 + sp * 0.6);
-      // 尖啸
-      var sq = squealCurve(slip) * S.squeal * load * Math.min(1, slideV / 2.5);
-      squeal.g.gain.setTargetAtTime(Math.min(0.55, sq * 0.55), t, sq > 0.05 ? 0.025 : 0.07);
-      var pitch = 780 + Math.min(1, slip / 3) * 420 + sp * 220;
-      squeal.s1.frequency.setTargetAtTime(pitch, t, 0.05);
-      squeal.s2.frequency.setTargetAtTime(pitch * 1.49, t, 0.05);
-      squeal.bp.frequency.setTargetAtTime(pitch * 1.2, t, 0.05);
-      squeal.trem.frequency.setTargetAtTime(28 + slip * 6, t, 0.1);
+      // 尖啸：超过抓地极限后出现，滑得越快越响、音调越高；音调带一点随机抖动（黏滑）
+      var on = slip < 0.8 ? 0 : Math.min(1, (slip - 0.8) / 0.5);
+      var sv = Math.min(1, slideV / 22);
+      var sq = on * S.squeal * load * Math.min(1, slideV / 3) * (0.55 + 0.45 * sv);
+      squeal.g.gain.setTargetAtTime(Math.min(0.62, sq * 0.62), t, sq > squeal.g.gain.value ? 0.02 : 0.06);
+      var rate = S.rate * (0.86 + 0.16 * sv + 0.06 * Math.min(1, sp)) * (1 + (Math.random() - 0.5) * 0.035);
+      for (var vi = 0; vi < squeal.voices.length; vi++) squeal.voices[vi].src.playbackRate.setTargetAtTime(rate * squeal.voices[vi].k, t, 0.035);
+      squeal.lp.frequency.setTargetAtTime(S.lp, t, 0.1);
       // 滑动摩擦噪声
       var sc = Math.min(1, slideV / 16);
       scrub.g.gain.setTargetAtTime(sc * S.scrub, t, 0.03);
@@ -359,6 +390,13 @@
     // 起漂瞬间的轮胎啾声
     chirp: function (k) {
       if (!ctx || !enabled) return;
+      if (squeal && squeal.buf) {
+        var t0 = ctx.currentTime, src = ctx.createBufferSource(), gg = ctx.createGain();
+        src.buffer = squeal.buf; src.playbackRate.value = 1.08 + Math.random() * 0.06;
+        gg.gain.setValueAtTime(0.0001, t0); gg.gain.exponentialRampToValueAtTime(0.42 * (k || 1), t0 + 0.012); gg.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.26);
+        src.connect(gg); gg.connect(master); src.start(t0, Math.random() * (squeal.buf.duration - 0.4)); src.stop(t0 + 0.3);
+        return;
+      }
       var t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
       o.type = 'sawtooth'; o.frequency.setValueAtTime(1500, t); o.frequency.exponentialRampToValueAtTime(950, t + 0.18);
       f.type = 'bandpass'; f.frequency.value = 1400; f.Q.value = 4;
@@ -367,8 +405,6 @@
     },
     coin: function (chain) { tone(1050 * Math.pow(1.06, chain || 0), 0.09, 'square', 0.07); tone(1575 * Math.pow(1.06, chain || 0), 0.12, 'triangle', 0.08, 0.03); },
     power: function () { [660, 880, 1320].forEach(function (f, i) { tone(f, 0.16, 'triangle', 0.16, i * 0.07); }); },
-    charge: function (stage) { var f = 740 * Math.pow(1.26, stage); tone(f, 0.06, 'square', 0.06); tone(f * 2, 0.13, 'triangle', 0.11, 0.035); },
-    turbo: function (stage) { noiseBurst(0.28 + 0.14 * stage, 5200, 0.13 + 0.05 * stage, 0, 500); tone(200, 0.22 + 0.1 * stage, 'sawtooth', 0.07 + 0.02 * stage, 0, 520 + 220 * stage); },
     comboUp: function (mult) { tone(520 * Math.pow(1.19, mult), 0.1, 'triangle', 0.18); tone(780 * Math.pow(1.19, mult), 0.14, 'triangle', 0.14, 0.05); },
     cash: function (big) {
       [1318, 1568, 2093].forEach(function (f, i) { tone(f, 0.12, 'square', 0.08, i * 0.06); });

@@ -98,8 +98,7 @@
     this.lastCount = 4;
     this.autopilot = 0;
     this.boostTimer = 0;
-    this.turboTimer = 0; this.turboK = 0; this.charge = { t: 0, stage: 0, off: 0, live: false };
-    this.fovKick = 0; this.camKick = 0; this.camAir = 0;
+    this.camAir = 0;
     this.bigAir = false; this.airScale = 1; this.grazeT = 0; this.signSeg = -1;
     this.spawnTimer = 0;
     this.lastEffect = null;
@@ -193,9 +192,7 @@
   }
   Game.prototype.updateBeam = function () {
     if (ringMat) {
-      var cs = this.state === 'running' && this.charge ? this.charge.stage : 0;
-      ringMat.opacity = this.state === 'menu' ? 0 : (cs ? 0.95 : 0.55 + Math.sin(this.time * 4) * 0.2);
-      if (cs !== this.ringStage) { this.ringStage = cs; ringMat.color.set(cs ? CHARGE_C[cs].hex : DC.tierOf(this.head.level).color); }
+      ringMat.opacity = this.state === 'menu' ? 0 : 0.55 + Math.sin(this.time * 4) * 0.2;
     }
     if (beamMat) beamMat.opacity = Math.min(1, this.world.cur.stars) * 0.6;
   };
@@ -206,7 +203,6 @@
     h.mesh = DC.makeCar(level, true);
     h.mesh.add(headBeam(h.mesh.userData.length, h.mesh.userData.width));
     h.mesh.add(headRing(h.mesh.userData.length, h.mesh.userData.width, DC.tierOf(level).color));
-    this.ringStage = 0;
     h.mesh.position.set(h.x, h.y, h.z);
     h.mesh.rotation.set(0, h.bodyA, 0);
     this.scene.add(h.mesh);
@@ -635,7 +631,7 @@
     if (this.state === 'menu' || s.first) return;
     this.ensureItems();
     var f = s.feat, self = this;
-    function free(al) { return al > s.eS + 1 && al < s.len - s.eE - 1 && !(f && al > f.a - 4 && al < f.end + 4); }
+    function free(al) { return al > s.cS + 1 && al < s.len - s.cE - 1 && !(f && al > f.a - 4 && al < f.end + 4); }
     function put(type, along, lat) {
       var h = self.track.heightAt(s, along);
       if (h === null || !free(along)) return;
@@ -768,7 +764,6 @@
     this.autoCorner = -1;
     h.y = this.track.heightAt(s, along) || 0; h.vy = 0; h.air = false;
     this.autopilot = 1.3;
-    this.charge = { t: 0, stage: 0, off: 0, live: false }; this.turboTimer = 0;
     this.shieldLeft--;
     this.fx.burst(h.x, h.y + 1.2, h.z, '#7fd3ff', 50, 10);
     DC.Audio.shield();
@@ -825,7 +820,7 @@
 
   // 下压力按车校准：原厂轮胎、在该等级所在的路面上过 90° 弯时，
   // 侧滑距离约为路宽的 SLIDE_RATIO 倍（slide90 在 Game 定义之后才会被调用）。这样各等级的漂移都够长，又不会滑出赛道的几何范围
-  var SLIDE_RATIO = DC.SLIDE_RATIO = 0.88, dfCache = {};
+  var SLIDE_RATIO = DC.SLIDE_RATIO = 1.5, dfCache = {};
   function slide90(o) {
     var Ph = DC.Physics, P = Ph.params(o), A = Math.PI / 4, B = -A, hh = 1 / 120;
     var st = Ph.state(0, 0, A, o.top), i, m = 0;
@@ -853,10 +848,10 @@
   // 车辆动力学参数
   Game.prototype.physParams = function () {
     var h = this.head, hd = this.handling(), surf = DC.SURFACES[hd.surface], tire = hd.tire;
-    var boost = this.boostTimer > 0, turbo = this.turboTimer > 0 ? this.turboK : 0;
+    var boost = this.boostTimer > 0;
     var P = DC.Physics.params({
-      top: DC.speedOf(h.level) * (1 + this.engine * 0.03) * (boost ? 1.35 : 1 + turbo),
-      accel: DC.accelOf(h.level) * (1 + this.engine * 0.1) * (boost ? 1.6 : (turbo ? 1.5 : 1)) * (h.heavy ? 0.7 : 1),
+      top: DC.speedOf(h.level) * (1 + this.engine * 0.03) * (boost ? 1.35 : 1),
+      accel: DC.accelOf(h.level) * (1 + this.engine * 0.1) * (boost ? 1.6 : 1) * (h.heavy ? 0.7 : 1),
       mu: hd.grip, kin: Math.min(0.95, tire.kin * surf.kin),
       D: DC.downforceOf(h.level),
       len: h.mesh ? h.mesh.userData.length : 4.5,
@@ -879,14 +874,13 @@
   Game.prototype.updateHead = function (dt) {
     var h = this.head;
     if (this.boostTimer > 0) this.boostTimer -= dt;
-    if (this.turboTimer > 0) this.turboTimer -= dt;
     var P = this.physParams();
     // 坡道上重力沿行进方向的分量
     if (!h.air) {
       var slope = clamp(h.vy / Math.max(h.v, 3), -0.6, 0.6);
       P.slopeA = -DC.Physics.G * slope;
       // 下坡时重力帮忙，极速更高；上坡极速降低
-      P.top *= 1 - clamp(slope, -0.25, 0.25) * 0.6;
+      P.top *= 1 - clamp(slope, -0.25, 0.25) * 0.4;
     }
     var target;
     if (this.autopilot > 0) { this.autopilot -= dt; target = this.autoTarget(P); }
@@ -968,7 +962,6 @@
       if (SPORTY[DC.carOf(h.level).type] && Math.random() < 0.75) this.backfire();
     }
     this.wasSliding = sliding;
-    this.updateCharge(dt, sliding, drift);
     // 氮气加速期间排气管持续喷蓝色火焰
     if (this.boostTimer > 0 && !DC.carOf(h.level).opts.ev) {
       var udb = h.mesh.userData, cab = Math.cos(h.bodyA), sab = Math.sin(h.bodyA), bk = -udb.length / 2 - 0.1;
@@ -1008,7 +1001,6 @@
       if (this.track.locate(px, pz, this.curSeg, 0) < 0) {
         on = true;
         this.grazeT += dt;
-        this.charge.t = Math.min(2.0, this.charge.t + dt * 0.9);
         // 悬空一侧的后轮擦着路沿冒火花
         this.grazeAcc = (this.grazeAcc || 0) + dt * 90;
         var wx = h.x + sa * back + ca * side * ud.width * 0.42, wz = h.z + ca * back - sa * side * ud.width * 0.42;
@@ -1028,72 +1020,6 @@
       }
       this.grazeT = 0;
     }
-  };
-
-  // 漂移蓄力：侧滑时累积，连续过弯会一直叠加（蓝 → 橙 → 紫），直道上逐渐消退。
-  // 每次回正抓地的瞬间按当前档位喷射加速
-  var CHARGE_T = [0.25, 0.85, 1.55], CHARGE_MAX = 2.0;
-  var CHARGE_C = [null, { r: 0.35, g: 0.75, b: 1, hex: '#59c2ff' }, { r: 1, g: 0.62, b: 0.15, hex: '#ffa02e' }, { r: 0.85, g: 0.4, b: 1, hex: '#d76bff' }];
-  DC.CHARGE_COLORS = ['#ffffff', CHARGE_C[1].hex, CHARGE_C[2].hex, CHARGE_C[3].hex];
-  DC.CHARGE_T = CHARGE_T;
-  function stageOf(t) { return t >= CHARGE_T[2] ? 3 : t >= CHARGE_T[1] ? 2 : t >= CHARGE_T[0] ? 1 : 0; }
-  Game.prototype.updateCharge = function (dt, sliding, drift) {
-    var h = this.head, ch = this.charge;
-    if (sliding && this.driftAngle > 10 && h.v > 8) {
-      ch.t = Math.min(CHARGE_MAX, ch.t + dt * (0.8 + 0.4 * drift)); ch.off = 0; ch.live = true;
-      var stg = stageOf(ch.t);
-      if (stg > ch.stage) {
-        DC.Audio.charge(stg);
-        DC.vibrate(8 + stg * 6);
-        var c = CHARGE_C[stg], ud = h.mesh.userData, ca = Math.cos(h.bodyA), sa = Math.sin(h.bodyA);
-        for (var sd = -1; sd <= 1; sd += 2) {
-          this.fx.burst(h.x - sa * ud.length * 0.32 + ca * sd * ud.width * 0.42, h.y + 0.3, h.z - ca * ud.length * 0.32 - sa * sd * ud.width * 0.42, c.hex, 10, 7);
-        }
-        this.notify('charge', { stage: stg });
-      }
-      ch.stage = stg;
-      return;
-    }
-    if (ch.t <= 0) return;
-    if (h.air) return; // 腾空时保留蓄力，落地后再结算
-    ch.off += dt;
-    // 直道上保持一小会儿，然后逐渐消退
-    var stage = ch.stage;
-    if (ch.off > 0.25) { ch.t = Math.max(0, ch.t - dt * 1.1); ch.stage = stageOf(ch.t); }
-    if (!ch.live || ch.off < 0.09) return;
-    ch.live = false;
-    if (!stage) return;
-    // 喷射：沿车头方向给一个速度增量，并在短时间内提高极速和加速度
-    var ph = h.ph, kick = [0, 0.8, 1.5, 2.4][stage] + h.v * [0, 0.01, 0.02, 0.03][stage];
-    ph.vx += Math.sin(ph.psi) * kick; ph.vz += Math.cos(ph.psi) * kick;
-    this.turboTimer = [0, 0.5, 0.75, 1.0][stage];
-    this.turboK = [0, 0.06, 0.1, 0.15][stage];
-    this.turboStage = stage;
-    this.stats.turbos = (this.stats.turbos || 0) + 1;
-    if (stage === 3) this.stats.turbo3 = (this.stats.turbo3 || 0) + 1;
-    var bonus = Math.round(Math.max(1, DC.incomeOf(h.level)) * [0, 1, 2, 4][stage] * this.turbo * (this.doubleTimer > 0 ? 2 : 1));
-    this.stats.coins += bonus;
-    this.fovKick = stage * 3.2; this.camKick = stage * 1.1;
-    if (this.sus) this.sus.pitchV -= 0.5 + stage * 0.35; // 车尾下蹲
-    this.shake = Math.max(this.shake || 0, 0.08 + stage * 0.06);
-    this.turboFlame(stage);
-    DC.Audio.turbo(stage);
-    DC.vibrate(stage === 3 ? [30, 20, 50] : 18 + stage * 10);
-    this.notify('turbo', { stage: stage, bonus: bonus });
-  };
-  // 喷射瞬间排气管喷出对应颜色的火焰
-  Game.prototype.turboFlame = function (stage) {
-    var h = this.head, ud = h.mesh.userData, ca = Math.cos(h.bodyA), sa = Math.sin(h.bodyA), c = CHARGE_C[stage];
-    var back = -ud.length / 2 - 0.1;
-    for (var s2 = -1; s2 <= 1; s2 += 2) {
-      var x = h.x + sa * back + ca * s2 * ud.width * 0.22, z = h.z + ca * back - sa * s2 * ud.width * 0.22;
-      for (var i = 0; i < 6 + stage * 5; i++) {
-        this.fx.sparks.emit({ x: x, y: h.y + 0.35, z: z,
-          vx: h.ph.vx * 0.8 - sa * rand(5, 14) + ca * rand(-1.5, 1.5), vy: rand(-0.4, 1.4), vz: h.ph.vz * 0.8 - ca * rand(5, 14) - sa * rand(-1.5, 1.5),
-          s0: rand(0.45, 0.9) * (1 + stage * 0.15) * this.badgeScale(), s1: 0.05, life: rand(0.12, 0.3), a: 1, r: c.r, g: c.g, b: c.b, fadeIn: 0.01 });
-      }
-    }
-    this.fx.shockwave(h.x - sa * ud.length * 0.5, h.y, h.z - ca * ud.length * 0.5, c.hex, 4 + stage * 2.5, 0.3);
   };
 
   // 漂移辅助线：预测“现在转向”后的物理轨迹，落在路面上为绿色，冲出去的部分为红色
@@ -1176,9 +1102,8 @@
     var e = Math.max(sliding ? it : 0, spinIt * 0.8);
     // 接地点的横向滑动方向，飞溅物顺着它甩出去
     var w = ph.vx * ca - ph.vz * sa;
-    var acc = this.fxAcc || (this.fxAcc = { s: [0, 0], d: [0, 0], k: [0, 0] });
-    var cs = sliding && this.charge ? this.charge.stage : 0, cc = CHARGE_C[cs];
-    var vs = this.badgeScale(); // 等级越高镜头越远，火花和烟相应放大
+    var acc = this.fxAcc || (this.fxAcc = { s: [0, 0], d: [0, 0] });
+    var vs = this.badgeScale(); // 等级越高镜头越远，烟相应放大
     var light = this.world.cur ? clamp(0.3 + (this.world.cur.sunI + this.world.cur.hemiI) * 0.4, 0.45, 1.1) : 1;
     this.fx.setLight(light);
     var tw = 0.22 + W * 0.05;
@@ -1194,15 +1119,6 @@
       var wy = h.y + slope * (rear ? -L * 0.32 : L * 0.3) * Math.cos(o.beta || 0);
       this.fx.mark(key, wx, wy, wz, ca, -sa, tw, F.markC, alpha);
       if (!rear) continue;
-      if (cs) {
-        acc.k[wI] += (50 + cs * 35) * dt;
-        while (acc.k[wI] >= 1) {
-          acc.k[wI] -= 1;
-          this.fx.sparks.emit({ x: wx + rand(-0.15, 0.15), y: h.y + 0.08, z: wz + rand(-0.15, 0.15),
-            vx: ph.vx * 0.35 + ca * w * rand(0.15, 0.5) - sa * rand(0, 4), vy: rand(1.5, 4.5 + cs), vz: ph.vz * 0.35 - sa * w * rand(0.15, 0.5) - ca * rand(0, 4),
-            s0: rand(0.16, 0.3) * (1 + cs * 0.2) * vs, s1: 0.03, life: rand(0.14, 0.34), a: 1, r: cc.r, g: cc.g, b: cc.b, fadeIn: 0.01, grav: 14 });
-        }
-      }
       acc.s[wI] += F.smoke * e * 60 * dt;
       acc.d[wI] += F.debris * e * 70 * dt;
       while (acc.s[wI] >= 1) {
@@ -1227,6 +1143,7 @@
     if (now) {
       if (!c.drifting && c.active && c.idle < 1.6) {
         c.mult = Math.min(5, c.mult + 1);
+        this.stats.maxMult = Math.max(this.stats.maxMult || 1, c.mult);
         this.notify('comboUp', { mult: c.mult });
       }
       c.drifting = true; c.active = true; c.idle = 0;
@@ -1245,6 +1162,7 @@
     if (coins > 0) {
       this.stats.coins += coins;
       this.stats.driftPoints = (this.stats.driftPoints || 0) + c.points;
+      this.stats.bestCombo = Math.max(this.stats.bestCombo || 0, c.points);
       this.notify('comboBank', { points: c.points, mult: c.mult, coins: coins });
     }
     this.combo = { active: false, points: 0, mult: 1, idle: 0, drifting: false, cur: 0 };
@@ -1417,12 +1335,10 @@
     var dr = camFx ? (this.drift || 0) : 0;
     // 漂移时镜头压低贴近，喷射时被甩在后面再追上
     this.camDr = (this.camDr || 0) + (dr - (this.camDr || 0)) * damp(dr > (this.camDr || 0) ? 5 : 2, dt);
-    if (this.camKick > 0.01) this.camKick *= Math.exp(-2.6 * dt); else this.camKick = 0;
-    if (this.fovKick > 0.01) this.fovKick *= Math.exp(-2.2 * dt); else this.fovKick = 0;
     var airT = camFx && h.air && this.state === 'running' ? Math.min(1, (this.airTime || 0) * 2.2) : 0;
     this.camAir = (this.camAir || 0) + (airT - (this.camAir || 0)) * damp(airT > (this.camAir || 0) ? 4 : 2.5, dt);
     var lowK = 1 - 0.1 * this.camDr + 0.22 * this.camAir;
-    var back = (14 + sf * 11) * big * (1 - 0.06 * this.camDr) + (camFx ? this.camKick : 0), up = (12 + sf * 9) * big * lowK, ahead = 10 + sf * 14;
+    var back = (14 + sf * 11) * big * (1 - 0.06 * this.camDr) , up = (12 + sf * 9) * big * lowK, ahead = 10 + sf * 14;
     back *= 1 + 0.12 * this.camAir;
     var asp = cam.aspect;
     if (asp < 1.3) {
@@ -1442,7 +1358,7 @@
     var shake = 0;
     if (this.shake > 0) { this.shake -= dt; shake = camFx ? this.shake * 0.6 : 0; }
     // 接近极速和加速时的高频抖动
-    var fast = camFx && this.state === 'running' ? clamp((h.v / DC.speedOf(h.level) - 0.92) * 6, 0, 1) * 0.025 + (this.boostTimer > 0 || this.turboTimer > 0 ? 0.035 : 0) : 0;
+    var fast = camFx && this.state === 'running' ? clamp((h.v / DC.speedOf(h.level) - 0.92) * 6, 0, 1) * 0.025 + (this.boostTimer > 0 ? 0.035 : 0) : 0;
     var t = this.time, amp = shake + dr * 0.07 + fast;
     var sx = (Math.sin(t * 37.1) * 0.6 + Math.sin(t * 23.7) * 0.4) * amp;
     var sy = (Math.sin(t * 41.3) * 0.5 + Math.sin(t * 19.9) * 0.5) * amp;
@@ -1451,7 +1367,7 @@
     cam.lookAt(this.camLook);
     cam.rotateZ(this.camRoll);
     this.fovDrift = (this.fovDrift || 0) + (dr * 4 - (this.fovDrift || 0)) * damp(2, dt);
-    var fov = 55 + sf * 14 + (this.boostTimer > 0 ? 8 : 0) + this.fovDrift + (camFx ? this.fovKick || 0 : 0);
+    var fov = 55 + sf * 14 + (this.boostTimer > 0 ? 8 : 0) + this.fovDrift;
     if (Math.abs(cam.fov - fov) > 0.05) { cam.fov += (fov - cam.fov) * damp(fov > cam.fov ? 7 : 3, dt); cam.updateProjectionMatrix(); }
   };
 
