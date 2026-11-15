@@ -207,6 +207,7 @@
   //    axles 轴位置(z), wR 轮半径, archGap 轮拱间隙, bumpF/bumpR 前后包围上翘
   //    sS/sR 腰线与门槛线的位置（-1 底 ~ 1 顶），gT/gR/gB 车身在顶部、门槛线、底部相对腰线的宽度，
   //    band 车身下沿深色饰板的上边界（不设则没有）
+  //    crown 0~1：轮拱上方的隆起有多少只加在两侧翼子板上（1 = 翼子板高、引擎盖中间低，跑车的造型；0 = 整个截面一起抬高）
   function Shape(P) {
     this.P = P;
     this.hl = P.L / 2;
@@ -235,17 +236,34 @@
     }
     return w;
   };
-  Shape.prototype.y1 = function (u) {
-    var P = this.P, y = curve(P.top, u);
+  // 轮拱上方需要的隆起高度（保证车轮被包住）
+  Shape.prototype.hump = function (u) {
+    var P = this.P, y = curve(P.top, u), y2 = y;
     if (P.axles && P.hump !== false) {
-      // 轮拱上方的翼子板隆起，保证车轮被包住
-      var z = this.zc + u * this.hl, ar = P.wR + (P.archGap || 0.06), need = P.wR + ar + 0.1;
+      // 翼子板造型（crown）的车：隆起更低，并向车厢方向拉长，和腰线连成一体
+      var cr = P.crown || 0, z = this.zc + u * this.hl, ar = P.wR + (P.archGap || 0.06), need = P.wR + ar + lerp(0.1, 0.05, cr);
       for (var i = 0; i < P.axles.length; i++) {
-        var q = Math.abs(z - P.axles[i]) / (ar * 1.6);
-        if (q < 1) y = Math.max(y, lerp(y, need, Math.cos(q * Math.PI / 2)));
+        var dz = z - P.axles[i], inward = P.axles[i] > this.zc ? dz < 0 : dz > 0;
+        var q = Math.abs(dz) / (ar * (inward ? lerp(1.6, 2.6, cr) : lerp(1.6, 2.3, cr)));
+        if (q < 1) y2 = Math.max(y2, lerp(y, need, Math.pow(Math.cos(q * Math.PI / 2), lerp(1, 0.7, cr))));
       }
     }
-    return y;
+    return y2 - y;
+  };
+  // 截面中线处的顶部高度（引擎盖、车顶下沿、后备箱盖的中间）
+  Shape.prototype.y1 = function (u) { return curve(this.P.top, u) + this.hump(u) * (1 - (this.P.crown || 0)); };
+  // 翼子板最高处
+  Shape.prototype.y1max = function (u) { return curve(this.P.top, u) + this.hump(u); };
+  // 翼子板隆起的权重：截面靠外侧、腰线以上
+  function crownW(q0, q1, P) { return smooth(0.3, 0.85, Math.abs(q0)) * smooth(-0.3, P.sS, q1); }
+  // 截面参数 (q0, q1) 对应的点（右半边 q0 > 0）
+  Shape.prototype.at = function (u, q0, q1, cache) {
+    var c = cache || this.sec(u);
+    return [c.w * q0 * this.g(q1), c.yc + c.h * q1 + c.hc * crownW(q0, q1, this.P)];
+  };
+  Shape.prototype.sec = function (u) {
+    var y0 = this.y0(u), y1 = this.y1(u);
+    return { w: this.w(u), y0: y0, y1: y1, yc: (y0 + y1) / 2, h: (y1 - y0) / 2, hc: this.hump(u) * (this.P.crown || 0) };
   };
   Shape.prototype.y0 = function (u) {
     var P = this.P, z = this.z(u);
@@ -257,11 +275,29 @@
     });
     return Math.min(y, this.y1(u) - 0.12);
   };
-  // 在某高度处车身侧面的半宽
+  // 在某高度处车身侧面（外侧）的半宽；高于车身则返回 0
   Shape.prototype.sideX = function (u, y) {
-    var P = this.P, y0 = this.y0(u), y1 = this.y1(u), yc = (y0 + y1) / 2, h = (y1 - y0) / 2;
-    var s = clamp((y - yc) / h, -1, 1), n = s > 0 ? P.nTop : P.nBot;
-    return this.w(u) * Math.pow(Math.max(0, 1 - Math.pow(Math.abs(s), n)), 1 / n) * this.g(s);
+    var P = this.P, c = this.sec(u);
+    if (c.hc < 1e-4) {
+      var s = clamp((y - c.yc) / c.h, -1, 1), n = s > 0 ? P.nTop : P.nBot;
+      return c.w * Math.pow(Math.max(0, 1 - Math.pow(Math.abs(s), n)), 1 / n) * this.g(s);
+    }
+    // 有翼子板隆起时截面上缘不再单调：从底部沿外侧往上找第一个到达 y 的点
+    var self = this;
+    function pt(t) { var sn = Math.sin(t), n2 = sn > 0 ? P.nTop : P.nBot; return self.at(u, spow(Math.cos(t), 2 / n2), spow(sn, 2 / n2), c); }
+    var N = 28, prev = pt(-Math.PI / 2);
+    if (y <= prev[1]) return 0;
+    for (var i = 1; i <= N; i++) {
+      var t = -Math.PI / 2 + i / N * Math.PI, cur = pt(t);
+      if (cur[1] >= y) {
+        var lo = t - Math.PI / N, hi = t;
+        for (var k = 0; k < 10; k++) { var mid = (lo + hi) / 2; if (pt(mid)[1] >= y) hi = mid; else lo = mid; }
+        return pt(hi)[0];
+      }
+      if (cur[1] < prev[1] - 1e-6) return 0; // 已越过翼子板最高点
+      prev = cur;
+    }
+    return 0;
   };
   // 车头（dir=1）/ 车尾（dir=-1）表面：横向 x、高度 y 处对应的 u 和 z
   Shape.prototype.faceU = function (x, y, dir) {
@@ -275,13 +311,14 @@
   Shape.prototype.faceZ = function (x, y, dir) { return this.z(this.faceU(x, y, dir)); };
   // 车身顶面（机盖、后备箱盖）在横向 x 处的高度
   Shape.prototype.topY = function (u, x) {
-    var P = this.P, w = this.w(u), y0 = this.y0(u), y1 = this.y1(u), ax = Math.abs(x), n = P.nTop;
+    var P = this.P, c = this.sec(u), ax = Math.abs(x), n = P.nTop;
     var lo = Math.max(0, P.sS), hi = 1;
     for (var i = 0; i < 16; i++) {
       var mid = (lo + hi) / 2;
-      if (w * Math.pow(Math.max(0, 1 - Math.pow(mid, n)), 1 / n) * this.g(mid) >= ax) lo = mid; else hi = mid;
+      if (c.w * Math.pow(Math.max(0, 1 - Math.pow(mid, n)), 1 / n) * this.g(mid) >= ax) lo = mid; else hi = mid;
     }
-    return (y0 + y1) / 2 + (y1 - y0) / 2 * lo;
+    var q0 = Math.pow(Math.max(0, 1 - Math.pow(lo, n)), 1 / n);
+    return c.yc + c.h * lo + c.hc * crownW(q0, lo, P);
   };
   // 车头/车尾表面在横向 x 处的 z 坐标
   // 数值求解车头/车尾表面在横向 x 处的 z（考虑轮拱外扩等变形）
@@ -355,8 +392,8 @@
     if (split) { us.push(split.u); us.sort(function (a, b) { return a - b; }); }
     var zs = us.map(function (u) { return S.z(u); });
     var geo = loft(zs, function (z, k) {
-      var u = us[k], w = S.w(u), y0 = S.y0(u), y1 = S.y1(u), yc = (y0 + y1) / 2, h = (y1 - y0) / 2;
-      return ring.map(function (q) { return [w * q[0] * S.g(q[1]), yc + h * q[1]]; });
+      var c = S.sec(us[k]);
+      return ring.map(function (q) { var pt = S.at(us[k], Math.abs(q[0]), q[1], c); return [q[0] < 0 ? -pt[0] : pt[0], pt[1]]; });
     }, true);
     // 按位置把面分到不同的颜色：车身、双色车身的后半段、下沿的深色饰板
     var pos = geo.attributes.position.array, nor = geo.attributes.normal.array, idx = geo.index.array, out = {};
@@ -388,7 +425,7 @@
     var ar = P.wR + (P.archGap || 0.06);
     (P.axles || []).forEach(function (za) {
       var u = (za - S.zc) / S.hl;
-      var top = Math.min(S.y1(u) - 0.1, P.wR + ar);
+      var top = Math.min(S.y1(u) - 0.08, P.wR + ar);
       // 内衬下沿不低于轮拱两侧的车身底边，避免从保险杠下面露出来
       var uf = clamp((za + ar * 1.1 - S.zc) / S.hl, -1, 1), ur = clamp((za - ar * 1.1 - S.zc) / S.hl, -1, 1);
       var bot = Math.max(P.wR * 0.4, S.y0(uf) + 0.04, S.y0(ur) + 0.04);
@@ -693,8 +730,9 @@
     na = na || clamp(Math.ceil(span(c, 0, 1, 3, 2) / 0.055), 2, 18);
     nb = nb || clamp(Math.ceil(span(c, 0, 3, 1, 2) / 0.06), 1, 6);
     patch(B, bucket, color, na, nb, function (a, b) {
-      var q = bil(c, a, b), lim = S.sideX(dir * 0.84, q[1]) * 0.985, x = clamp(q[0], -lim, lim);
-      return [x, q[1], S.faceZ(x, q[1], dir)];
+      var q = bil(c, a, b), x0 = q[0], y = Math.min(q[1], S.topY(dir * 0.9, x0) - 0.012);
+      var lim = S.sideX(dir * 0.84, y) * 0.985, x = clamp(x0, -lim, lim);
+      return [x, y, S.faceZ(x, y, dir)];
     }, 0, 0, dir, off);
   }
   // 车身侧面上的四边形，c 的坐标是 [z, y]
@@ -777,6 +815,12 @@
       var hh = slim ? clamp(H * 0.2, 0.06, 0.085) : clamp(H * 0.3, 0.1, 0.16);
       var xi = Wh * (o.lightIn || (slim ? 0.34 : 0.46)), xo = Wh * 0.99;
       var sweep = slim ? hh * 0.9 : hh * 0.3;
+      if ((P.crown || 0) > 0.5 && !o.lightY) {
+        // 贴着车头上沿：内端低、外端沿翼子板往上掠
+        xi = Wh * 0.4; hh = clamp(H * 0.26, 0.075, 0.11);
+        var yIn = S.topY(0.93, xi) - 0.05, yOut = S.topY(0.9, Wh * 0.86) - 0.06;
+        yc = yIn - hh * 0.62; sweep = clamp(yOut - yIn, hh * 0.5, hh * 1.6);
+      }
       // 内端窄、外端宽并上扬，绕到车身转角
       var q = [[s * xi, yc - hh * 0.42], [s * xo, yc - hh * 0.3 + sweep], [s * xo, yc + hh * 0.62 + sweep], [s * xi, yc + hh * 0.38]];
       fq(B, 'matte', '#07080a', S, 1, [[s * (xi - 0.02), q[0][1] - 0.015], [s * xo, q[1][1] - 0.015], [s * xo, q[2][1] + 0.015], [s * (xi - 0.02), q[3][1] + 0.015]], 0.006);
@@ -860,7 +904,7 @@
       }
     }
     // 前牌照
-    if (!o.noPlate) plate(B, S, o, 1, o.plateY || (o.ev || o.noGrille ? yLo + H * 0.46 : Math.max(iy + ih / 2 + 0.085, y - gh / 2 - 0.1)));
+    if (!o.noPlate) plate(B, S, o, 1, o.plateY || (o.ev || o.noGrille ? Math.max(yLo + H * 0.46, iy + ih / 2 + 0.085) : Math.max(iy + ih / 2 + 0.085, y - gh / 2 - 0.1)));
   }
   function rearDetails(B, S, o) {
     var P = S.P, u = -0.95, yLo = S.y0(u), yHi = S.y1(u), H = yHi - yLo;
@@ -893,7 +937,7 @@
     }
   }
   function mirrors(B, S, G, gh, color) {
-    var u = G.gF - 0.05, y = gh.yb(u) + 0.1, x = gh.wb(u), z = S.z(u);
+    var u = G.gF - 0.05, x = gh.wb(u), z = S.z(u), y = Math.max(gh.yb(u) + 0.1, S.topY(u, x) + 0.09);
     for (var s = -1; s <= 1; s += 2) {
       beam(B, 'matte', '#101012', V(s * (x - 0.02), y - 0.05, z + 0.01), V(s * (x + 0.1), y - 0.02, z - 0.01), 0.05, 0.03);
       var pod = new T.SphereGeometry(1, 12, 8);
@@ -1053,11 +1097,11 @@
     mid: { L: 4.55, W: 2.0, clear: 0.1, wR: 0.36, tw: 0.28, ax: [0.58, -0.6], pF: 3.2, pR: 5, nTop: 2.4, nBot: 4,
       top: [[-1, 0.62], [-0.95, 0.86], [-0.6, 0.88], [0.15, 0.8], [0.92, 0.53], [1, 0.36]],
       gh: { gR: -0.56, rR: -0.22, rF: 0.04, gF: 0.5, roof: 1.18, tumble: 0.64, wsCurve: 1.5 }, grip: 1.15,
-      intakes: true, louvers: true, lights: 'slim', exhaust: 2, diffuser: true, intake: true },
+      intakes: true, louvers: true, lights: 'slim', exhaust: 2, diffuser: true, intake: true, noGrille: true },
     hyper: { L: 4.75, W: 2.06, clear: 0.09, wR: 0.37, tw: 0.3, ax: [0.58, -0.6], pF: 3.0, pR: 4.6, nTop: 2.2, nBot: 4,
       top: [[-1, 0.62], [-0.95, 0.8], [-0.6, 0.8], [0.15, 0.72], [0.92, 0.45], [1, 0.3]],
       gh: { gR: -0.6, rR: -0.24, rF: 0.02, gF: 0.52, roof: 1.12, tumble: 0.6, wsCurve: 1.6 }, grip: 1.25,
-      intakes: true, louvers: true, lights: 'slim', exhaust: 3, diffuser: true, fin: true, splitter: true, tails: 'bar', intake: true }
+      intakes: true, louvers: true, lights: 'slim', exhaust: 3, diffuser: true, fin: true, splitter: true, tails: 'bar', intake: true, noGrille: true }
   };
 
   // 乘用车通用生成
@@ -1104,7 +1148,8 @@
     var P = {
       L: L, W: W, clear: o.clear, wR: o.wR, archGap: o.archGap || 0.06, pF: o.pF, pR: o.pR, nTop: o.nTop, nBot: o.nBot,
       top: o.top.map(function (k) { return [k[0], k[1] * (o.sH || 1)]; }), bumpF: o.bumpF, bumpR: o.bumpR,
-      bulge: o.bulge !== undefined ? o.bulge : ({ mid: 0.07, hyper: 0.08, coupe: 0.05, muscle: 0.045, offroad: 0.03 }[car.type] || 0.025),
+      bulge: o.bulge !== undefined ? o.bulge : ({ mid: 0.05, hyper: 0.055, coupe: 0.04, muscle: 0.035, offroad: 0.03 }[car.type] || 0.025),
+      crown: o.crown !== undefined ? o.crown : ({ mid: 0.72, hyper: 0.78, coupe: 0.6, muscle: 0.45 }[car.type] || 0),
       axles: o.ax.map(function (a) { return a * hl; })
     };
     // 截面：硬派车型接近方盒子，收放小；跑车腰线低、上半部收得多
