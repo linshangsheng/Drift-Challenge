@@ -21,7 +21,7 @@
   }
 
   DC.FEATURE_NAMES = { hill: '起伏坡', jump: '飞跃坡', gap: '断桥飞跃', boost: '加速带', slick: '打滑区' };
-  var Y_MIN = -7, Y_MAX = 12; // 赛道高度的活动范围
+  var Y_MIN = -4, Y_MAX = 15; // 赛道高度的活动范围
   var DEG = Math.PI / 180;
 
   function Track(scene, world) {
@@ -253,7 +253,7 @@
         // 坡顶的曲率不能让车在弯前意外腾空，所以路段越短（按行驶时间算）坡越小
         var dyMax = Math.min(9, 0.16 * Lp, 2.2 * tt * tt);
         if (dyMax > 0.6 && Math.random() < 0.62) {
-          var up = Math.random() < clamp(0.5 - y0 / 16, 0.1, 0.9);
+          var up = Math.random() < clamp(0.5 - (y0 - 5) / 16, 0.1, 0.9);
           if (feat && feat.type === 'boost' && y0 > Y_MIN + 2) up = false; // 加速带配下坡俯冲
           y1 = clamp(y0 + (up ? 1 : -1) * dyMax * rand(0.55, 1), Y_MIN, Y_MAX);
           if (Math.abs(y1 - y0) < 0.4) y1 = y0;

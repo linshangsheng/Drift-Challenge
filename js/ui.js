@@ -305,8 +305,14 @@
       }
       var ti = DC.themeIndexOf(d.level);
       if (DC.THEMES[ti].from === d.level) setTimeout(function () { self.toast('进入新场景：' + DC.THEMES[ti].name + '<small>' + DC.SURFACES[DC.THEMES[ti].surface].name + '，注意侧滑距离变化</small>', '#ffffff'); }, 900);
-    } else if (type === 'land') {
-      if (d.air > 0.5) this.floater(this.game.head.x, this.game.head.y + 3, this.game.head.z, '飞跃 ' + d.air.toFixed(1) + 's', '#ffd34d');
+    } else if (type === 'airBonus') {
+      this.floater(this.game.head.x, this.game.head.y + 3, this.game.head.z, '飞跃 ' + d.air.toFixed(1) + 's +' + DC.fmt(d.bonus), '#ffd34d');
+    } else if (type === 'sign') {
+      this.floater(this.game.head.x, this.game.head.y + 5, this.game.head.z, d.text, d.color);
+    } else if (type === 'graze') {
+      this.floater(this.game.head.x, this.game.head.y + 4.2, this.game.head.z, '贴边漂移！+' + DC.fmt(d.bonus), '#ffb03d');
+      DC.Audio.comboUp(2);
+      DC.vibrate(15);
     } else if (type === 'boost') {
       this.floater(this.game.head.x, this.game.head.y + 3, this.game.head.z, '加速！', '#3df5ff');
     } else if (type === 'turbo') {
@@ -527,7 +533,7 @@
   UI.prototype.checkAchievements = function (run) {
     var save = DC.Save.data, got = [];
     save.ach = save.ach || {}; save.records = save.records || {};
-    if (run) ['eaten', 'time', 'driftPoints', 'jumps', 'merges', 'coinsPicked'].forEach(function (k) {
+    if (run) ['eaten', 'time', 'driftPoints', 'jumps', 'merges', 'coinsPicked', 'airBest', 'turbos', 'turbo3', 'grazes'].forEach(function (k) {
       if ((run[k] || 0) > (save.records[k] || 0)) save.records[k] = Math.floor(run[k]);
     });
     DC.ACHIEVEMENTS.forEach(function (a) {

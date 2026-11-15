@@ -288,7 +288,7 @@
     } else {
       // 近景浮岛：比赛道低，可以出现在赛道附近和下方
       x = cx + side * rnd(14, 95);
-      y = theme === 3 ? rnd(-30, -12) : rnd(-26, -10);
+      y = theme === 3 ? rnd(-33, -16) : rnd(-29, -14);
       z = initial ? cz + rnd(-60, 420) : cz + rnd(330, 460);
     }
     p.group.position.set(x, y, z);

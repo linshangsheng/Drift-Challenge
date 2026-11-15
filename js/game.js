@@ -99,7 +99,8 @@
     this.autopilot = 0;
     this.boostTimer = 0;
     this.turboTimer = 0; this.turboK = 0; this.charge = { t: 0, stage: 0, off: 0, live: false };
-    this.fovKick = 0; this.camKick = 0;
+    this.fovKick = 0; this.camKick = 0; this.camAir = 0;
+    this.bigAir = false; this.airScale = 1; this.grazeT = 0; this.signSeg = -1;
     this.spawnTimer = 0;
     this.lastEffect = null;
     this.avgV = 0;
@@ -898,10 +899,16 @@
     // 路面与高度
     var ground = this.track.groundAt(h.x, h.z, this.curSeg);
     if (ground) this.curSeg = ground.seg;
+    if (this.curSeg !== this.signSeg) this.roadSign();
     var wasAir = h.air;
     var impact = this.vertical(h, ground, dt);
     if (impact > 0) this.landed(impact);
-    else if (impact < 0 && !wasAir) { this.stats.jumps++; this.notify('air', {}); }
+    else if (impact < 0 && !wasAir) {
+      this.stats.jumps++;
+      var js = this.track.get(this.curSeg);
+      this.bigAir = !!(js && js.feat && js.feat.big && ground && ground.along > js.feat.b - 3); // 大跳台：滞空时进入慢镜头
+      this.notify('air', { big: this.bigAir });
+    }
     if (h.air) this.airTime = (this.airTime || 0) + dt; else this.airTime = 0;
 
     // 掉崖判定：车身完全离开路面才算。离开后先按抛物线飞行，落回路面就没事
@@ -932,6 +939,7 @@
     }
     if (eff === 'slick' && this.lastEffect !== 'slick') this.notify('slick', {});
     this.lastEffect = eff;
+    this.updateGraze(dt, ground, o);
     if (this.autoCorner >= 0 && this.curSeg >= this.autoCorner) this.autoCorner = -1;
 
     this.track.extend(this.curSeg, h.level, 16);
@@ -971,6 +979,48 @@
   };
 
   var SPORTY = { hatch: 1, sedan: 1, muscle: 1, coupe: 1, mid: 1, hyper: 1 };
+
+  // 进入新路段时的提示：前面是急弯或大跳台
+  Game.prototype.roadSign = function () {
+    this.signSeg = this.curSeg;
+    var s = this.track.get(this.curSeg);
+    if (!s || s.first) return;
+    if (s.feat && s.feat.big) this.notify('sign', { text: '大跳台！', color: '#ffd34d' });
+    else if (s.turn > 1.88) this.notify('sign', { text: '前方急弯', color: '#ff8a5c' });
+  };
+
+  // 贴边漂移：漂移时车身外侧已经探出路面，车还在路上。结束时给金币，并额外增加蓄力
+  Game.prototype.updateGraze = function (dt, ground, o) {
+    var h = this.head, on = false;
+    if (ground && !h.air && o.slipX > 1 && Math.abs(o.beta) > 0.2 && h.v > 8) {
+      var ud = h.mesh.userData, ca = Math.cos(h.bodyA), sa = Math.sin(h.bodyA);
+      var side = o.beta > 0 ? 1 : -1; // 车身滑向的一侧（侧向速度的方向）
+      var reach = ud.width * 0.5 + 0.55, back = -ud.length * 0.3;
+      var px = h.x + sa * back + ca * side * reach, pz = h.z + ca * back - sa * side * reach;
+      if (this.track.locate(px, pz, this.curSeg, 0) < 0) {
+        on = true;
+        this.grazeT += dt;
+        this.charge.t = Math.min(2.0, this.charge.t + dt * 0.9);
+        // 悬空一侧的后轮擦着路沿冒火花
+        this.grazeAcc = (this.grazeAcc || 0) + dt * 90;
+        var wx = h.x + sa * back + ca * side * ud.width * 0.42, wz = h.z + ca * back - sa * side * ud.width * 0.42;
+        while (this.grazeAcc >= 1) {
+          this.grazeAcc -= 1;
+          this.fx.sparks.emit({ x: wx, y: h.y + 0.08, z: wz, vx: h.ph.vx * 0.4 + rand(-3, 3), vy: rand(2, 6), vz: h.ph.vz * 0.4 + rand(-3, 3),
+            s0: rand(0.14, 0.26), s1: 0.03, life: rand(0.15, 0.4), a: 1, r: 1, g: rand(0.6, 0.9), b: 0.3, fadeIn: 0.01, grav: 16 });
+        }
+      }
+    }
+    if (!on && this.grazeT > 0) {
+      if (this.grazeT > 0.12 && this.state === 'running' && (ground || !h.air)) {
+        var bonus = Math.round(Math.max(2, DC.incomeOf(h.level) * 3) * (1 + this.grazeT * 5) * this.turbo * (this.doubleTimer > 0 ? 2 : 1));
+        this.stats.coins += bonus;
+        this.stats.grazes = (this.stats.grazes || 0) + 1;
+        this.notify('graze', { bonus: bonus, t: this.grazeT });
+      }
+      this.grazeT = 0;
+    }
+  };
 
   // 漂移蓄力：侧滑时累积，连续过弯会一直叠加（蓝 → 橙 → 紫），直道上逐渐消退。
   // 每次回正抓地的瞬间按当前档位喷射加速
@@ -1211,6 +1261,13 @@
 
   Game.prototype.landed = function (impact) {
     var h = this.head;
+    this.bigAir = false;
+    if (this.airTime > 0.55 && this.state === 'running') {
+      var ab = Math.round(Math.max(2, DC.incomeOf(h.level) * 4) * this.airTime * this.turbo * (this.doubleTimer > 0 ? 2 : 1));
+      this.stats.coins += ab;
+      this.stats.airBest = Math.max(this.stats.airBest || 0, this.airTime);
+      this.notify('airBonus', { air: this.airTime, bonus: ab });
+    }
     if (this.sus) { this.sus.heaveV -= Math.min(6, impact * 0.35); this.sus.pitchV += Math.min(2, impact * 0.08); }
     if (impact > 6) {
       this.shake = Math.min(0.6, impact * 0.03);
@@ -1218,7 +1275,7 @@
       DC.vibrate(Math.round(20 + impact * 3));
       for (var i = 0; i < 8; i++) this.fx.puff(h.x + rand(-1, 1), h.y + 0.2, h.z + rand(-1, 1), rand(-4, 4), rand(-4, 4), 1.4, this.smokeColor());
       this.fx.shockwave(h.x, h.y, h.z, this.smokeColor(), 6 + impact * 0.5, 0.4);
-      this.notify('land', { air: this.airTime });
+      this.notify('land', { air: this.airTime, impact: impact });
     }
   };
 
@@ -1265,6 +1322,10 @@
 
     if (this.state === 'running') {
       if (this.timeScale && this.timeScale !== 1) dt *= this.timeScale; // 新手引导慢动作
+      // 大跳台滞空：短暂的慢镜头
+      var slow = this.bigAir && h.air && this.airTime > 0.1 && DC.Save.data.settings.camFx !== false ? 0.5 : 1;
+      this.airScale += (slow - this.airScale) * damp(slow < this.airScale ? 10 : 5, dt);
+      if (this.airScale < 0.995) dt *= this.airScale;
       this.stats.time += dt;
       this.updateHead(dt);
     }
@@ -1349,8 +1410,11 @@
     this.camDr = (this.camDr || 0) + (dr - (this.camDr || 0)) * damp(dr > (this.camDr || 0) ? 5 : 2, dt);
     if (this.camKick > 0.01) this.camKick *= Math.exp(-2.6 * dt); else this.camKick = 0;
     if (this.fovKick > 0.01) this.fovKick *= Math.exp(-2.2 * dt); else this.fovKick = 0;
-    var lowK = 1 - 0.1 * this.camDr;
+    var airT = camFx && h.air && this.state === 'running' ? Math.min(1, (this.airTime || 0) * 2.2) : 0;
+    this.camAir = (this.camAir || 0) + (airT - (this.camAir || 0)) * damp(airT > (this.camAir || 0) ? 4 : 2.5, dt);
+    var lowK = 1 - 0.1 * this.camDr + 0.22 * this.camAir;
     var back = (14 + sf * 11) * big * (1 - 0.06 * this.camDr) + (camFx ? this.camKick : 0), up = (12 + sf * 9) * big * lowK, ahead = 10 + sf * 14;
+    back *= 1 + 0.12 * this.camAir;
     var asp = cam.aspect;
     if (asp < 1.3) {
       var k = Math.pow(Math.min(2.2, 1.3 / asp), 0.75);
