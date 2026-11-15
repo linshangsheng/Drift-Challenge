@@ -163,7 +163,7 @@ if (window.THREE && THREE.ColorManagement) THREE.ColorManagement.legacyMode = fa
   // 加速度（米/秒²）
   DC.accelOf = function (level) { return 16 + 45 * p(level); };
   // 下压力系数：车速越高轮胎法向载荷越大（高级车空气动力学更强）
-  DC.downforceOf = function (level) { var v = DC.speedOf(level); return Math.max(0.04, 1 / 6.5 - 30 / (v * v)); };
+  // 下压力系数 DC.downforceOf 在 game.js 里按每辆车校准（让侧滑距离与路宽成比例）
   DC.incomeOf = function (level) { return Math.pow(1.1, level - 1); };
   DC.mergeBonusOf = function (level) { return Math.round(DC.incomeOf(level) * 3); };
 
