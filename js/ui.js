@@ -318,6 +318,12 @@
     } else if (type === 'turbo') {
       var hT = this.game.head;
       this.floater(hT.x, hT.y + 3.4, hT.z, ['', '漂移喷射', '强力喷射！', '极限喷射！！'][d.stage] + ' +' + DC.fmt(d.bonus), DC.CHARGE_COLORS[d.stage]);
+      // 第一次喷射时说明一下规则
+      var sv = DC.Save.data;
+      if (!sv.tipTurbo && sv.tutorialDone && !this.game.coach) {
+        sv.tipTurbo = true; DC.Save.save();
+        this.toast('漂移喷射！<small>侧滑会积累蓄力，连续过弯火花从蓝变橙再变紫，出弯时自动喷射加速</small>', DC.CHARGE_COLORS[2]);
+      }
     } else if (type === 'slick') {
       this.floater(this.game.head.x, this.game.head.y + 3, this.game.head.z, '打滑！', '#c9a8ff');
     } else if (type === 'edge') {

@@ -213,6 +213,8 @@
     h.pop = 1;
     h.heavy = !!HEAVY[DC.carOf(level).type];
     DC.Audio.setEngine(DC.engineTypeOf(level));
+    // 提前校准下一级的下压力，升级时不卡顿
+    if (level < DC.MAX_LEVEL && this.state !== 'menu') setTimeout(function () { DC.downforceOf(level + 1); }, 500);
   };
 
   Game.prototype.makeTailCar = function (level, x, z, y) {
@@ -1087,7 +1089,7 @@
       for (var i = 0; i < 6 + stage * 5; i++) {
         this.fx.sparks.emit({ x: x, y: h.y + 0.35, z: z,
           vx: h.ph.vx * 0.8 - sa * rand(5, 14) + ca * rand(-1.5, 1.5), vy: rand(-0.4, 1.4), vz: h.ph.vz * 0.8 - ca * rand(5, 14) - sa * rand(-1.5, 1.5),
-          s0: rand(0.45, 0.9) * (1 + stage * 0.15), s1: 0.05, life: rand(0.12, 0.3), a: 1, r: c.r, g: c.g, b: c.b, fadeIn: 0.01 });
+          s0: rand(0.45, 0.9) * (1 + stage * 0.15) * this.badgeScale(), s1: 0.05, life: rand(0.12, 0.3), a: 1, r: c.r, g: c.g, b: c.b, fadeIn: 0.01 });
       }
     }
     this.fx.shockwave(h.x - sa * ud.length * 0.5, h.y, h.z - ca * ud.length * 0.5, c.hex, 4 + stage * 2.5, 0.3);
@@ -1175,6 +1177,7 @@
     var w = ph.vx * ca - ph.vz * sa;
     var acc = this.fxAcc || (this.fxAcc = { s: [0, 0], d: [0, 0], k: [0, 0] });
     var cs = sliding && this.charge ? this.charge.stage : 0, cc = CHARGE_C[cs];
+    var vs = this.badgeScale(); // 等级越高镜头越远，火花和烟相应放大
     var light = this.world.cur ? clamp(0.3 + (this.world.cur.sunI + this.world.cur.hemiI) * 0.4, 0.45, 1.1) : 1;
     this.fx.setLight(light);
     var tw = 0.22 + W * 0.05;
@@ -1196,14 +1199,14 @@
           acc.k[wI] -= 1;
           this.fx.sparks.emit({ x: wx + rand(-0.15, 0.15), y: h.y + 0.08, z: wz + rand(-0.15, 0.15),
             vx: ph.vx * 0.35 + ca * w * rand(0.15, 0.5) - sa * rand(0, 4), vy: rand(1.5, 4.5 + cs), vz: ph.vz * 0.35 - sa * w * rand(0.15, 0.5) - ca * rand(0, 4),
-            s0: rand(0.16, 0.3) * (1 + cs * 0.2), s1: 0.03, life: rand(0.14, 0.34), a: 1, r: cc.r, g: cc.g, b: cc.b, fadeIn: 0.01, grav: 14 });
+            s0: rand(0.16, 0.3) * (1 + cs * 0.2) * vs, s1: 0.03, life: rand(0.14, 0.34), a: 1, r: cc.r, g: cc.g, b: cc.b, fadeIn: 0.01, grav: 14 });
         }
       }
       acc.s[wI] += F.smoke * e * 60 * dt;
       acc.d[wI] += F.debris * e * 70 * dt;
       while (acc.s[wI] >= 1) {
         acc.s[wI] -= 1;
-        this.fx.puff(wx, h.y + 0.25, wz, ph.vx * 0.22, ph.vz * 0.22, F.smokeS, F.smokeC, e);
+        this.fx.puff(wx, h.y + 0.25, wz, ph.vx * 0.22, ph.vz * 0.22, F.smokeS * (0.7 + 0.3 * vs), F.smokeC, e);
       }
       var nd = Math.floor(acc.d[wI]);
       if (nd > 0) {
