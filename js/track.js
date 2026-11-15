@@ -98,7 +98,11 @@
       x.fillStyle = '#d81e2c'; x.fillRect(0, 0, w, h);
       x.strokeStyle = '#ffffff'; x.lineWidth = 13; x.lineJoin = 'miter';
       for (var i = 0; i < 2; i++) { x.beginPath(); x.moveTo(26 + i * 46, 8); x.lineTo(56 + i * 46, 32); x.lineTo(26 + i * 46, 56); x.stroke(); }
-    }), side: T.DoubleSide, toneMapped: false });
+    }), toneMapped: false }); // 只画正面：从背后看不到牌子，也就不会看到反向的箭头
+    this.chevronGeoR = new T.PlaneGeometry(2.5, 1.25);
+    this.chevronGeoL = new T.PlaneGeometry(2.5, 1.25);
+    var cuv = this.chevronGeoL.attributes.uv;
+    for (var ci = 0; ci < cuv.count; ci++) cuv.setX(ci, 1 - cuv.getX(ci));
     this.gateMat = new T.MeshBasicMaterial({ color: '#58f2ff', toneMapped: false });
     this.flagMat = new T.MeshBasicMaterial({ color: '#ffcc00', toneMapped: false });
     this.poleMat = new T.MeshStandardMaterial({ color: '#d9dde3', roughness: 0.5, metalness: 0.4 });
@@ -197,10 +201,11 @@
   DC.cornerExt = cornerExt;
 
   // 路段方向：大多数接近 45°，也有更陡（连起来就是发卡弯）和更缓（高速弯）的
-  function pickAngle(sign, n, chicane) {
+  function pickAngle(sign, n, chicane, level) {
     var r = Math.random(), a;
     if (DC.debugAngle) a = DC.debugAngle(n); // 测试用
     else if (n < 4) a = 45;
+    else if (level < 4) a = rand(41, 49); // 最初几级先熟悉接近 90° 的弯
     else if (chicane) a = rand(36, 46);
     else if (r < 0.5) a = rand(41, 49);
     else if (r < 0.76) a = rand(52, 59);
@@ -234,9 +239,9 @@
       // 下一段的方向和宽度
       // 连续短弯：一连几段又短又密的弯，没有特殊路段
       if (this.chicane > 0) this.chicane--;
-      else if (n > 6 && Math.random() < 0.07) this.chicane = 3 + Math.floor(Math.random() * 3);
+      else if (n > 6 && level >= 3 && Math.random() < 0.07) this.chicane = 3 + Math.floor(Math.random() * 3);
       var inCh = this.chicane > 0;
-      var sg = angle > 0 ? -1 : 1, nAngle = pickAngle(sg, n + 1, inCh), nW = inCh ? baseW * rand(0.95, 1.1) : pickWidth(baseW);
+      var sg = angle > 0 ? -1 : 1, nAngle = pickAngle(sg, n + 1, inCh, level), nW = inCh ? baseW * rand(0.95, 1.1) : pickWidth(baseW);
       // 本段的宽度已经定了：太窄就把下一个弯放缓；下一段不够宽就加宽
       while (w < baseW * widthK(Math.abs(nAngle - angle)) && Math.abs(nAngle) > 34 * DEG) nAngle -= sg * 3 * DEG;
       var turn = Math.abs(nAngle - angle);
@@ -536,9 +541,9 @@
       var left = s.nAngle > s.angle, k = clamp(w / 13, 1, 1.9), cnt = s.turn > 108 * DEG ? 4 : 3;
       for (var c = 0; c < cnt; c++) {
         var px = (c - (cnt - 1) / 2) * 2.9 * k;
-        var pm = new T.Mesh(this.chevronGeo || (this.chevronGeo = new T.PlaneGeometry(2.5, 1.25)), this.chevronMat);
+        var pm = new T.Mesh(left ? this.chevronGeoL : this.chevronGeoR, this.chevronMat);
         pm.rotation.y = Math.PI;
-        pm.scale.set((left ? -1 : 1) * k, k, 1);
+        pm.scale.set(k, k, 1);
         pm.position.set(px, s.y1 + 0.75 + 0.62 * k, L + s.eE + 0.25);
         g.add(pm);
         box(poles, px, s.y1 + 0.35, L + s.eE + 0.3, 0.14, 0.9, 0.14);
@@ -561,6 +566,20 @@
         if (f.big) box(flags, sd * (hw + 0.2), top + fh - 1.8, f.b - 1.1, 0.06, 0.9, 1.5);
       }
       g.add(boxMesh(flags, this.flagMat));
+    }
+    // 岩石拱门：长直路上偶尔出现，从中间穿过去
+    if (!f && !s.first && L - s.eS - s.eE > 46 && s.y1 === s.y0 && Math.random() < 0.3) {
+      var arch = [], az = s.eS + (L - s.eS - s.eE) * rand(0.4, 0.6), ah = 9.5 + w * 0.12, ax = hw + 1.6, by = s.y0;
+      for (var sd2 = -1; sd2 <= 1; sd2 += 2) {
+        box(arch, sd2 * (ax + 0.9), by + ah * 0.25 - 2, az, 3.4, ah * 0.5 + 4, 4.2);
+        box(arch, sd2 * (ax + 0.5), by + ah * 0.7, az + 0.3, 2.6, ah * 0.5, 3.4);
+        box(arch, sd2 * (ax - 0.9), by + ah * 1.02, az, 3.6, 2.4, 3.8);
+      }
+      box(arch, 0, by + ah * 1.12, az, ax * 2 - 2, 2.2, 3.4);
+      box(arch, rand(-2, 2), by + ah * 1.24, az + 0.4, ax * 1.1, 1.4, 2.6);
+      var am = boxMesh(arch, this.world.mats.rock);
+      am.castShadow = true;
+      g.add(am);
     }
     // 起点拱门
     if (s.first) {
