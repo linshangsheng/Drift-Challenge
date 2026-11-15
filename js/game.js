@@ -879,7 +879,12 @@
     if (this.turboTimer > 0) this.turboTimer -= dt;
     var P = this.physParams();
     // 坡道上重力沿行进方向的分量
-    if (!h.air) P.slopeA = -DC.Physics.G * clamp(h.vy / Math.max(h.v, 3), -0.6, 0.6);
+    if (!h.air) {
+      var slope = clamp(h.vy / Math.max(h.v, 3), -0.6, 0.6);
+      P.slopeA = -DC.Physics.G * slope;
+      // 下坡时重力帮忙，极速更高；上坡极速降低
+      P.top *= 1 - clamp(slope, -0.25, 0.25) * 0.6;
+    }
     var target;
     if (this.autopilot > 0) { this.autopilot -= dt; target = this.autoTarget(P); }
     else target = this.isHolding() ? this.dirs().left : this.dirs().right;

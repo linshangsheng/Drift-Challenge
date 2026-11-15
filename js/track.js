@@ -21,7 +21,7 @@
   }
 
   DC.FEATURE_NAMES = { hill: '起伏坡', jump: '飞跃坡', gap: '断桥飞跃', boost: '加速带', slick: '打滑区' };
-  var Y_MIN = -4, Y_MAX = 15; // 赛道高度的活动范围
+  var Y_MIN = -4, Y_MAX = 24; // 赛道高度的活动范围
   var DEG = Math.PI / 180;
 
   function Track(scene, world) {
@@ -123,6 +123,7 @@
   Track.prototype.reset = function (level, surface) {
     this.clear();
     this.surface = surface || 'asphalt';
+    this.trend = 1; this.trendLeft = 3; this.chicane = 0;
     var w = DC.trackWidthOf(level);
     this.addSegment({ ax: 0, az: 0, angle: RIGHT, len: 75, w: w, feat: null, first: true, cum: 0, y0: 0, y1: 0, eS: w / 2, nAngle: LEFT, nW: w });
   };
@@ -187,10 +188,11 @@
   DC.cornerExt = cornerExt;
 
   // 路段方向：大多数接近 45°，也有更陡（连起来就是发卡弯）和更缓（高速弯）的
-  function pickAngle(sign, n) {
+  function pickAngle(sign, n, chicane) {
     var r = Math.random(), a;
     if (DC.debugAngle) a = DC.debugAngle(n); // 测试用
     else if (n < 4) a = 45;
+    else if (chicane) a = rand(36, 46);
     else if (r < 0.5) a = rand(41, 49);
     else if (r < 0.76) a = rand(52, 59);
     else a = rand(32, 38);
@@ -221,7 +223,11 @@
       var angle = last.nAngle, w = last.nW, hw = w / 2;
       var eS = cornerExt(hw, last.w / 2, last.turn);
       // 下一段的方向和宽度
-      var sg = angle > 0 ? -1 : 1, nAngle = pickAngle(sg, n + 1), nW = pickWidth(baseW);
+      // 连续短弯：一连几段又短又密的弯，没有特殊路段
+      if (this.chicane > 0) this.chicane--;
+      else if (n > 6 && Math.random() < 0.07) this.chicane = 3 + Math.floor(Math.random() * 3);
+      var inCh = this.chicane > 0;
+      var sg = angle > 0 ? -1 : 1, nAngle = pickAngle(sg, n + 1, inCh), nW = inCh ? baseW * rand(0.95, 1.1) : pickWidth(baseW);
       // 本段的宽度已经定了：太窄就把下一个弯放缓；下一段不够宽就加宽
       while (w < baseW * widthK(Math.abs(nAngle - angle)) && Math.abs(nAngle) > 34 * DEG) nAngle -= sg * 3 * DEG;
       var turn = Math.abs(nAngle - angle);
@@ -231,10 +237,10 @@
       var slideLen = (DC.SLIDE_RATIO || 0.88) * baseW * (Math.tan(last.turn / 2) + Math.tan(turn / 2));
       var minLen = Math.max(slideLen, eS + eE + w * 0.9);
       // 长短变化
-      var t = Math.random() < 0.2 ? rand(2.2, 3.2) : rand(0.8 - 0.25 * p, 2.1 - 0.6 * p);
+      var t = inCh ? 0.5 : (Math.random() < 0.2 ? rand(2.2, 3.2) : rand(0.8 - 0.25 * p, 2.1 - 0.6 * p));
       var len = Math.max(minLen, v * t);
       var feat = null;
-      if (n > 2 && !last.feat && Math.random() < Math.min(0.5, 0.2 + 0.35 * p + (level > 1 ? 0.05 : 0))) {
+      if (n > 2 && !inCh && !last.feat && Math.random() < Math.min(0.5, 0.2 + 0.35 * p + (level > 1 ? 0.05 : 0))) {
         feat = this.makeFeature(level, v, w, p, eS, eE, last.y1);
         if (feat) len = Math.max(len, feat.minLen);
       }
@@ -252,8 +258,14 @@
         var Lp = len - eS - eE - 4, tt = Lp / v;
         // 坡顶的曲率不能让车在弯前意外腾空，所以路段越短（按行驶时间算）坡越小
         var dyMax = Math.min(9, 0.16 * Lp, 2.2 * tt * tt);
-        if (dyMax > 0.6 && Math.random() < 0.62) {
-          var up = Math.random() < clamp(0.5 - (y0 - 5) / 16, 0.1, 0.9);
+        // 高度有走势：连续几段下坡（山道俯冲）或连续上坡，到了范围边界就掉头
+        if (--this.trendLeft <= 0 || (this.trend > 0 ? y0 > Y_MAX - 3 : y0 < Y_MIN + 3)) {
+          this.trend = y0 > (Y_MIN + Y_MAX) / 2 ? -1 : 1;
+          if (y0 > Y_MIN + 6 && y0 < Y_MAX - 6 && Math.random() < 0.35) this.trend = -this.trend;
+          this.trendLeft = 3 + Math.floor(Math.random() * 5);
+        }
+        if (dyMax > 0.6 && Math.random() < 0.72) {
+          var up = Math.random() < (this.trend > 0 ? 0.85 : 0.15);
           if (feat && feat.type === 'boost' && y0 > Y_MIN + 2) up = false; // 加速带配下坡俯冲
           y1 = clamp(y0 + (up ? 1 : -1) * dyMax * rand(0.55, 1), Y_MIN, Y_MAX);
           if (Math.abs(y1 - y0) < 0.4) y1 = y0;
@@ -293,7 +305,8 @@
     } else if (type === 'boost') {
       f.a = a0; f.b = f.a + 7; f.end = f.b; f.minLen = f.b + tail + w * 0.5 + v * 0.3;
     } else {
-      f.a = a0 * 0.8; f.b = f.a + Math.max(12, v * 0.7); f.end = f.b; f.minLen = f.b + tail + w * 0.5 + v * 0.2;
+      // 油污放在上一个弯滑完之后，不让车还在侧滑时就压上去
+      f.a = a0 + v * 0.35; f.b = f.a + Math.max(12, v * 0.7); f.end = f.b; f.minLen = f.b + tail + w * 0.5 + v * 0.2;
     }
     return f;
   };
