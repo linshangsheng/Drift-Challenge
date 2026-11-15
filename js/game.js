@@ -233,14 +233,13 @@
   // 刷车等级
   Game.prototype.spawnLevel = function () {
     var L = this.head.level;
-    // 路上的车不多，所以每辆都更有分量：一半概率与车尾某辆同级（吃到就能合成），其余接近车头等级
-    if (this.tail.length && Math.random() < 0.5) return this.tail[Math.floor(Math.random() * this.tail.length)].level;
+    // 路上的车不多，所以每辆都更有分量：多半与车尾某辆同级（吃到就能合成，优先是车尾最高级的那辆），其余接近车头等级
+    if (this.tail.length && Math.random() < 0.58) return this.tail[Math.random() < 0.6 ? 0 : Math.floor(Math.random() * this.tail.length)].level;
     var r = Math.random(), d;
-    if (r < 0.05) d = 0;
-    else if (r < 0.5) d = 1;
-    else if (r < 0.8) d = 2;
-    else if (r < 0.94) d = 3;
-    else d = 4 + Math.floor(Math.random() * 3);
+    if (r < 0.16) d = 0;
+    else if (r < 0.66) d = 1;
+    else if (r < 0.9) d = 2;
+    else d = 3 + Math.floor(Math.random() * 3);
     return Math.max(1, L - d);
   };
 
@@ -264,7 +263,7 @@
     badge.position.y = dims.height + 0.9;
     mesh.add(badge);
     var latMax = Math.max(0, s.w / 2 - dims.width / 2 - 0.5);
-    var lat = rand(-latMax, latMax);
+    var lat = rand(-latMax, latMax) * 0.7;
     var p = this.track.pointAt(s.idx, along, lat);
     var y0 = this.track.heightAt(s, along) || 0;
     mesh.position.set(p.x, y0, p.z);
@@ -483,7 +482,7 @@
     var h = this.head;
     var headLen = h.mesh ? h.mesh.userData.length : 4;
     var mg = Math.max(this.magnet, this.magnetTimer > 0 ? 5 : 0);
-    var magR = 1.6 + (mg > 0 ? 0.6 + mg * 0.8 : 0);
+    var magR = 2.2 + (mg > 0 ? 0.6 + mg * 0.8 : 0);
     var prog = this.headProgress();
     // 路上的车始终比玩家稍慢（按玩家平滑后的实际车速）
     this.avgV = (this.avgV || 0) + (h.v - (this.avgV || 0)) * damp(0.8, dt);
@@ -545,7 +544,9 @@
           this.stats.eaten++;
           DC.Audio.pickup();
           this.fx.burst(c.x, c.y + 1, c.z, '#ffffff', 12, 6);
-          this.notify('eat', { level: c.level, x: c.x, z: c.z, y: c.y });
+          var eb = DC.eatBonusOf(c.level) * this.turbo * (this.doubleTimer > 0 ? 2 : 1);
+          this.stats.coins += eb;
+          this.notify('eat', { level: c.level, x: c.x, z: c.z, y: c.y, bonus: eb });
           this.addToTail(c.level, c.x, c.z, c.y);
           continue;
         }

@@ -292,7 +292,7 @@
       cd.classList.add('anim');
       if (d.n === 0) setTimeout(function () { cd.classList.add('hidden'); }, 900);
     } else if (type === 'eat') {
-      this.floater(d.x, (d.y || 0) + 2.5, d.z, '+Lv' + d.level, DC.tierOf(d.level).color);
+      this.floater(d.x, (d.y || 0) + 2.5, d.z, '+Lv' + d.level + (d.bonus ? ' · +' + DC.fmt(d.bonus) : ''), DC.tierOf(d.level).color);
     } else if (type === 'merge') {
       var hh = this.game.head;
       this.floater(hh.x, hh.y + 4.5, hh.z, '合成 Lv' + d.level + '  +' + DC.fmt(d.bonus), DC.tierOf(d.level).color);

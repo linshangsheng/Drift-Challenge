@@ -165,7 +165,9 @@ if (window.THREE && THREE.ColorManagement) THREE.ColorManagement.legacyMode = fa
   // 下压力系数：车速越高轮胎法向载荷越大（高级车空气动力学更强）
   // 下压力系数 DC.downforceOf 在 game.js 里按每辆车校准（让侧滑距离与路宽成比例）
   DC.incomeOf = function (level) { return Math.pow(1.1, level - 1); };
-  DC.mergeBonusOf = function (level) { return Math.round(DC.incomeOf(level) * 3); };
+  DC.mergeBonusOf = function (level) { return Math.round(DC.incomeOf(level) * 5); };
+  // 路上的车不多，每吃到一辆都有金币
+  DC.eatBonusOf = function (level) { return Math.max(1, Math.round(DC.incomeOf(level) * 6)); };
 
   function niceRound(n) {
     if (n < 100) return Math.round(n);
