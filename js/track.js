@@ -93,6 +93,15 @@
         x.fillStyle = g; x.beginPath(); x.arc(px, py, r, 0, Math.PI * 2); x.fill();
       }
     }), transparent: true, roughness: 0.05, metalness: 0.6, depthWrite: false }), -3);
+    // 路边参照物：急弯导向牌、加速带拱门、跳台旗杆
+    this.chevronMat = new T.MeshBasicMaterial({ map: canvasTex(128, 64, function (x, w, h) {
+      x.fillStyle = '#d81e2c'; x.fillRect(0, 0, w, h);
+      x.strokeStyle = '#ffffff'; x.lineWidth = 13; x.lineJoin = 'miter';
+      for (var i = 0; i < 2; i++) { x.beginPath(); x.moveTo(26 + i * 46, 8); x.lineTo(56 + i * 46, 32); x.lineTo(26 + i * 46, 56); x.stroke(); }
+    }), side: T.DoubleSide, toneMapped: false });
+    this.gateMat = new T.MeshBasicMaterial({ color: '#58f2ff', toneMapped: false });
+    this.flagMat = new T.MeshBasicMaterial({ color: '#ffcc00', toneMapped: false });
+    this.poleMat = new T.MeshStandardMaterial({ color: '#d9dde3', roughness: 0.5, metalness: 0.4 });
     this.topMatsA = [m.asphalt, m.rock];
     this.topMatsB = [this.asphaltB, m.rock];
     this.time = 0;
@@ -336,6 +345,25 @@
     return pts;
   };
 
+  // 往顶点数组里加一个长方体（中心 cx,cy,cz，尺寸 sx,sy,sz）
+  var BOX_F = [[0, 1, 3, 2], [5, 4, 6, 7], [4, 0, 2, 6], [1, 5, 7, 3], [2, 3, 7, 6], [4, 5, 1, 0]];
+  function box(arr, cx, cy, cz, sx, sy, sz) {
+    var v = [];
+    for (var i = 0; i < 8; i++) v.push([cx + (i & 1 ? 0.5 : -0.5) * sx, cy + (i & 2 ? 0.5 : -0.5) * sy, cz + (i & 4 ? 0.5 : -0.5) * sz]);
+    for (var f = 0; f < 6; f++) {
+      var q = BOX_F[f], a = v[q[0]], b = v[q[1]], c = v[q[2]], d = v[q[3]];
+      arr.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2], a[0], a[1], a[2], c[0], c[1], c[2], d[0], d[1], d[2]);
+    }
+  }
+  function boxMesh(arr, mat) {
+    var g = new T.BufferGeometry();
+    g.setAttribute('position', new T.Float32BufferAttribute(arr, 3));
+    g.computeVertexNormals();
+    var m = new T.Mesh(g, mat);
+    m.userData.ownGeo = true;
+    return m;
+  }
+
   function quad(arr, a, b, c, d) { arr.push(a[0], a[1], a[2], c[0], c[1], c[2], b[0], b[1], b[2], a[0], a[1], a[2], d[0], d[1], d[2], c[0], c[1], c[2]); }
 
   Track.prototype.roadPiece = function (s, from, to) {
@@ -467,6 +495,8 @@
       }
     }
 
+    this.roadside(s, g);
+
     // 岩柱
     var pil = new T.Mesh(this.pillarGeo, this.world.mats.rock);
     pil.scale.set(w * 0.62, rand(18, 40), w * 0.62);
@@ -481,6 +511,64 @@
       g.add(pil2);
     }
     return g;
+  };
+
+  // 路边参照物（只是装饰，不参与碰撞）：飞快掠过的路沿反光桩带来速度感，
+  // 急弯外侧立导向牌，加速带上方有拱门，跳台两侧有旗杆
+  Track.prototype.roadside = function (s, g) {
+    var w = s.w, hw = w / 2, L = s.len, f = s.feat, self = this;
+    var posts = [], poles = [];
+    // 反光桩：贴在路沿外侧
+    var pk = clamp(w / 13, 1, 1.8); // 路越宽镜头越远，桩子相应加大
+    var step = 9 * pk, a0 = s.eS + 3, a1 = L - s.eE - 3, n = Math.max(0, Math.floor((a1 - a0) / step));
+    for (var i = 0; i <= n; i++) {
+      var al = n ? a0 + (a1 - a0) * i / n : (a0 + a1) / 2;
+      if (a1 < a0) break;
+      var h = this.heightAt(s, al);
+      if (h === null) continue;
+      box(posts, hw + 0.1, h + 0.5 * pk - 0.2, al, 0.17 * pk, pk + 0.4, 0.17 * pk);
+      box(posts, -hw - 0.1, h + 0.5 * pk - 0.2, al, 0.17 * pk, pk + 0.4, 0.17 * pk);
+    }
+    if (posts.length) g.add(boxMesh(posts, this.world.mats.edge));
+
+    // 急弯导向牌：立在弯道尽头的外沿，箭头指向转弯方向
+    if (s.turn > 97 * DEG) {
+      var left = s.nAngle > s.angle, k = clamp(w / 13, 1, 1.9), cnt = s.turn > 108 * DEG ? 4 : 3;
+      for (var c = 0; c < cnt; c++) {
+        var px = (c - (cnt - 1) / 2) * 2.9 * k;
+        var pm = new T.Mesh(this.chevronGeo || (this.chevronGeo = new T.PlaneGeometry(2.5, 1.25)), this.chevronMat);
+        pm.rotation.y = Math.PI;
+        pm.scale.set((left ? -1 : 1) * k, k, 1);
+        pm.position.set(px, s.y1 + 0.75 + 0.62 * k, L + s.eE + 0.25);
+        g.add(pm);
+        box(poles, px, s.y1 + 0.35, L + s.eE + 0.3, 0.14, 0.9, 0.14);
+      }
+    }
+    // 加速带拱门
+    if (f && f.type === 'boost') {
+      var gate = [], gy = this.heightAt(s, f.a) || s.y0, gh = 7.2;
+      box(gate, hw + 0.25, gy + gh / 2 - 0.5, f.a, 0.35, gh + 1, 0.35);
+      box(gate, -hw - 0.25, gy + gh / 2 - 0.5, f.a, 0.35, gh + 1, 0.35);
+      box(gate, 0, gy + gh, f.a, w + 0.85, 0.45, 0.45);
+      g.add(boxMesh(gate, this.gateMat));
+    }
+    // 跳台旗杆
+    if (f && (f.type === 'jump' || f.type === 'gap')) {
+      var flags = [], fh = f.big ? 5.5 : 3.6, top = s.y0 + f.H;
+      for (var sd = -1; sd <= 1; sd += 2) {
+        box(poles, sd * (hw + 0.2), top + fh / 2 - 0.6, f.b - 0.3, 0.14, fh + 1.2, 0.14);
+        box(flags, sd * (hw + 0.2), top + fh - 0.5, f.b - 1.1, 0.06, 0.9, 1.5);
+        if (f.big) box(flags, sd * (hw + 0.2), top + fh - 1.8, f.b - 1.1, 0.06, 0.9, 1.5);
+      }
+      g.add(boxMesh(flags, this.flagMat));
+    }
+    // 起点拱门
+    if (s.first) {
+      var sg = [];
+      box(sg, hw + 0.25, 3.2, 16, 0.35, 7.4, 0.35); box(sg, -hw - 0.25, 3.2, 16, 0.35, 7.4, 0.35); box(sg, 0, 6.9, 16, w + 0.85, 0.5, 0.5);
+      g.add(boxMesh(sg, this.poleMat));
+    }
+    if (poles.length) g.add(boxMesh(poles, this.poleMat));
   };
 
   // ---------- 查询 ----------
